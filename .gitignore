@@ -1,0 +1,13 @@
+node_modules/
+dist/
+.env
+*.log
+
+# saidas geradas em runtime — nunca versionar, contem dado de cliente
+tmp/
+saidas/
+uploads/
+*.tsbuildinfo
+
+# resultados de testes manuais (podem conter conversa real de cliente)
+teste-ia/
