@@ -1,7 +1,7 @@
 import fs from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
-import { gerarEstruturado, type Uso } from "./anthropic.js";
+import { gerarEstruturado, type ChaveCliente, type Uso } from "./anthropic.js";
 import {
   AlteracaoSchema,
   SugestaoReuniaoSchema,
@@ -70,6 +70,7 @@ export type ResultadoSugestao = {
 export async function sugerir(
   textoDoCliente: string,
   origem: OrigemPedido = "mensagem",
+  chaveCliente?: ChaveCliente,
 ): Promise<ResultadoSugestao> {
   const texto = textoDoCliente.trim();
   const limite = MAX_CARACTERES[origem];
@@ -89,12 +90,15 @@ export async function sugerir(
 
   const esquema = origem === "reuniao" ? SugestaoReuniaoSchema : SugestaoSchema;
 
-  const { dados: bruto, uso } = await gerarEstruturado<Sugestao | SugestaoReuniao>({
-    sistema: PROMPTS[origem],
-    usuario: texto,
-    schema: esquema,
-    maxTokens: 16000,
-  });
+  const { dados: bruto, uso } = await gerarEstruturado<Sugestao | SugestaoReuniao>(
+    {
+      sistema: PROMPTS[origem],
+      usuario: texto,
+      schema: esquema,
+      maxTokens: 16000,
+    },
+    chaveCliente,
+  );
 
   return {
     alteracoes: paraAlteracoes(bruto),

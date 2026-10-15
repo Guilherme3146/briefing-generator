@@ -4,7 +4,10 @@ import AbaConferencia from "./AbaConferencia";
 import AbaIA from "./AbaIA";
 import AbaPedido from "./AbaPedido";
 import AbaPlanilha from "./AbaPlanilha";
+import { useToast } from "./Toast";
 import {
+  contarAvisos,
+  contarPendencias,
   hashRevisao,
   novaAlteracao,
   temConteudo,
@@ -16,7 +19,9 @@ import {
   type FonteAlteracao,
   type Importacao,
   type Inspecao,
+  type ModoIA,
   type OrigemPedido,
+  type ProvedorIA,
   type RespostaPerguntas,
   type RespostaRevisao,
   type RespostaSugestao,
@@ -25,6 +30,10 @@ import {
 } from "./types";
 
 const CHAVE = "briefing-rascunho-v1";
+// chave propria, FORA do rascunho: nao deve ser apagada por "Limpar", nem
+// viajar junto se o rascunho for exportado/importado por engano
+const CHAVE_IA = "briefing-ia-chave-v1";
+const PROVEDOR_IA = "briefing-ia-provedor-v1";
 
 const VAZIO: Briefing = { cliente: "", url_base: "", alteracoes: [novaAlteracao(1)] };
 
@@ -40,6 +49,8 @@ function explicarFalhaDaApi(status: number, corpo: string): string {
 }
 
 export default function App() {
+  const { mostrar: toast } = useToast();
+
   const [briefing, setBriefing] = useState<Briefing>(() => {
     try {
       const salvo = localStorage.getItem(CHAVE);
@@ -65,6 +76,15 @@ export default function App() {
   const [erro, setErro] = useState<string | null>(null);
 
   const [iaAtiva, setIaAtiva] = useState(false);
+  const [iaModo, setIaModo] = useState<ModoIA>("desligada");
+  const [provedorPadrao, setProvedorPadrao] = useState<ProvedorIA>("gemini");
+  // a chave que o PROPRIO VISITANTE colou — so existe no navegador dele. So
+  // importa (e so e enviada) quando iaModo === "proprio"; nos outros modos o
+  // servidor ja resolve sozinho e esse campo fica sem uso.
+  const [iaChave, setIaChave] = useState(() => localStorage.getItem(CHAVE_IA) ?? "");
+  const [iaProvedorEscolhido, setIaProvedorEscolhido] = useState<ProvedorIA>(
+    () => (localStorage.getItem(PROVEDOR_IA) as ProvedorIA | null) ?? "gemini",
+  );
   const [ignorados, setIgnorados] = useState<string[]>([]);
   const [revertidas, setRevertidas] = useState<string[]>([]);
   const [uso, setUso] = useState<Uso | null>(null);
@@ -94,10 +114,48 @@ export default function App() {
       const d = await r.json();
       setApiOnline(r.ok && d?.ok === true);
       setIaAtiva(Boolean(d?.ia?.ativa));
+      setIaModo((d?.ia?.modo as ModoIA | undefined) ?? "desligada");
+      if (d?.ia?.provedorPadrao) {
+        setProvedorPadrao(d.ia.provedorPadrao as ProvedorIA);
+        // so adota a dica do servidor se o visitante nunca escolheu nada aqui
+        if (!localStorage.getItem(PROVEDOR_IA)) {
+          setIaProvedorEscolhido(d.ia.provedorPadrao as ProvedorIA);
+        }
+      }
     } catch {
       setApiOnline(false);
     }
   }, []);
+
+  // persistidos a parte do rascunho — ver o comentario em CHAVE_IA
+  useEffect(() => {
+    try {
+      if (iaChave) localStorage.setItem(CHAVE_IA, iaChave);
+      else localStorage.removeItem(CHAVE_IA);
+    } catch {
+      /* quota cheia ou storage bloqueado: a chave so vive nesta sessao */
+    }
+  }, [iaChave]);
+  useEffect(() => {
+    try {
+      localStorage.setItem(PROVEDOR_IA, iaProvedorEscolhido);
+    } catch {
+      /* idem */
+    }
+  }, [iaProvedorEscolhido]);
+
+  /**
+   * Headers da chave do visitante — so vao quando o modo e "proprio". Nos
+   * outros modos o servidor resolve tudo sozinho e mandar isto seria ignorado
+   * (ver anthropic.ts: em modo "servidor" o header nunca e usado).
+   */
+  const headersIA = useCallback((): Record<string, string> => {
+    if (iaModo !== "proprio" || !iaChave.trim()) return {};
+    return { "X-IA-Chave": iaChave.trim(), "X-IA-Provedor": iaProvedorEscolhido };
+  }, [iaModo, iaChave, iaProvedorEscolhido]);
+
+  /** true quando um clique num botao de IA realmente dispara uma chamada. */
+  const iaPronta = iaModo === "servidor" || (iaModo === "proprio" && iaChave.trim().length > 0);
 
   useEffect(() => {
     void verificarApi();
@@ -180,15 +238,24 @@ export default function App() {
     }));
   }, []);
 
-  const confirmar = useCallback((ordem: number) => {
-    setBriefing((b) => ({
-      ...b,
-      alteracoes: b.alteracoes.map((a) => (a.ordem === ordem ? { ...a, confirmado: true } : a)),
-    }));
-  }, []);
+  const confirmar = useCallback(
+    (ordem: number) => {
+      setBriefing((b) => ({
+        ...b,
+        alteracoes: b.alteracoes.map((a) => (a.ordem === ordem ? { ...a, confirmado: true } : a)),
+      }));
+      toast(`Alteração ${ordem} confirmada`);
+    },
+    [toast],
+  );
 
   function confirmarTodas() {
-    setBriefing((b) => ({ ...b, alteracoes: b.alteracoes.map((a) => ({ ...a, confirmado: true })) }));
+    let qtd = 0;
+    setBriefing((b) => {
+      qtd = b.alteracoes.filter((a) => !a.confirmado).length;
+      return { ...b, alteracoes: b.alteracoes.map((a) => ({ ...a, confirmado: true })) };
+    });
+    toast(`${qtd} ${qtd === 1 ? "alteração confirmada" : "alterações confirmadas"}`);
   }
 
   /** Tira uma dúvida da IA da lista (já respondida ou não se aplica). */
@@ -295,6 +362,9 @@ export default function App() {
       }
       setImportacao(data);
       setPromovidos(new Set());
+      toast(
+        `${data.tarefas.length} ${data.tarefas.length === 1 ? "tarefa encontrada" : "tarefas encontradas"} em "${arquivo.name}"`,
+      );
       // o texto normalizado é a base dos destaques: sem ele os trechos não se acham
       if (
         !clientes &&
@@ -382,10 +452,15 @@ export default function App() {
     setSelecionada(1);
     descartarPlanilha();
     setAba("pedido");
+    toast("Tudo limpo — pronto para um novo briefing", "info");
   }
 
   async function sugerir() {
     if (!pedido.trim()) return;
+    if (!iaPronta) {
+      setErro("Cole sua chave de IA em Configurar IA antes de usar — fica só neste navegador.");
+      return;
+    }
     const preenchidas = briefing.alteracoes.filter(temConteudo).length;
     if (
       preenchidas > 0 &&
@@ -401,7 +476,7 @@ export default function App() {
     try {
       const r = await fetch("/api/sugerir", {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
+        headers: { "Content-Type": "application/json", ...headersIA() },
         body: JSON.stringify({ texto: pedido, origem }),
       });
       const data = (await r.json()) as RespostaSugestao & { erro?: string };
@@ -428,6 +503,9 @@ export default function App() {
       setUso(data.uso ?? null);
       setCacheRevisao({});
       setPerguntas(null);
+      toast(
+        `${data.alteracoes.length} ${data.alteracoes.length === 1 ? "alteração sugerida" : "alterações sugeridas"} pela IA — confira antes de gerar`,
+      );
     } catch (e) {
       setErro(e instanceof Error ? e.message : String(e));
     } finally {
@@ -436,6 +514,10 @@ export default function App() {
   }
 
   async function revisarIA() {
+    if (!iaPronta) {
+      setErro("Cole sua chave de IA em Configurar IA antes de usar — fica só neste navegador.");
+      return;
+    }
     const pendentes = briefing.alteracoes.filter(
       (a) => a.solicitacao.trim() && !cacheRevisao[hashRevisao(a)],
     );
@@ -449,7 +531,7 @@ export default function App() {
     try {
       const r = await fetch("/api/revisar-ia", {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
+        headers: { "Content-Type": "application/json", ...headersIA() },
         body: JSON.stringify({ briefing: { ...briefing, alteracoes: pendentes } }),
       });
       const data = (await r.json()) as RespostaRevisao & { erro?: string };
@@ -470,6 +552,13 @@ export default function App() {
       if (data.faltantes?.length) {
         setErro(
           `A IA não devolveu veredito para ${data.faltantes.length} alteração(ões). Revise de novo se quiser.`,
+        );
+      } else {
+        const reprovadas = data.vereditos.filter((v) => !v.executavel).length;
+        toast(
+          reprovadas > 0
+            ? `Revisão concluída — ${reprovadas} ${reprovadas === 1 ? "alteração travaria" : "alterações travariam"} a produção`
+            : "Revisão concluída — tudo executável",
         );
       }
     } catch (e) {
@@ -511,8 +600,9 @@ export default function App() {
     try {
       await navigator.clipboard.writeText(perguntas.texto);
       setCopiado(true);
+      toast("Perguntas copiadas");
     } catch {
-      /* sem permissão: o texto está na tela para copiar à mão */
+      toast("Não consegui copiar automaticamente — selecione o texto na tela e copie à mão", "erro");
     }
   }
 
@@ -573,15 +663,18 @@ export default function App() {
       });
       if (!r.ok) {
         const data = await r.json().catch(() => ({ erro: `Erro ${r.status}` }));
-        setErro(data.erro ?? `Erro ${r.status}`);
+        const msg = data.erro ?? `Erro ${r.status}`;
+        setErro(msg);
+        toast(msg, "erro");
         return;
       }
-      baixar(
-        await r.blob(),
-        r.headers.get("X-Nome-Arquivo") ?? planilha?.name ?? "briefing.xlsx",
-      );
+      const nome = r.headers.get("X-Nome-Arquivo") ?? planilha?.name ?? "briefing.xlsx";
+      baixar(await r.blob(), nome);
+      toast(`${planilha ? "Planilha atualizada" : "Planilha gerada"}: ${nome}`);
     } catch (e) {
-      setErro(e instanceof Error ? e.message : String(e));
+      const msg = e instanceof Error ? e.message : String(e);
+      setErro(msg);
+      toast(msg, "erro");
     } finally {
       setGerando(false);
     }
@@ -595,6 +688,12 @@ export default function App() {
   const erros = achados.filter((a) => a.severidade === "erro");
   const pendencias = erros.filter((a) => a.regra !== "NAO_CONFIRMADO");
   const avisos = achados.filter((a) => a.severidade === "aviso");
+  // contagem por ALTERAÇÃO, não por regra: uma linha sem "onde" e sem "o que
+  // fazer" ao mesmo tempo dispara 2 achados de erro mas é 1 linha quebrada só
+  // na lista "O que falta resolver" — contar achados.length mostraria 9 onde
+  // só existem 8 alterações com problema.
+  const qtdPendencias = contarPendencias(achados);
+  const qtdAvisos = contarAvisos(achados);
   const naoConfirmadas = briefing.alteracoes.filter((a) => !a.confirmado).length;
   const ordenadas = [...briefing.alteracoes].sort((a, b) => a.ordem - b.ordem);
   const vereditoDe = (a: Alteracao): Veredito | undefined => cacheRevisao[hashRevisao(a)];
@@ -621,8 +720,8 @@ export default function App() {
     {
       id: "conferencia",
       rotulo: "Conferência",
-      contagem: pendencias.length + avisos.length,
-      alerta: pendencias.length > 0,
+      contagem: qtdPendencias + qtdAvisos,
+      alerta: qtdPendencias > 0,
     },
     { id: "planilha", rotulo: "Planilha" },
   ];
@@ -659,16 +758,25 @@ export default function App() {
         <div className="topo-dir">
           <div className="indicadores">
             <Indicador
-              valor={pendencias.length}
-              rotulo={pendencias.length === 1 ? "pendência" : "pendências"}
-              tom={pendencias.length ? "erro" : "ok"}
-              onClick={pendencias.length ? irParaPrimeiroProblema : undefined}
+              valor={qtdPendencias}
+              rotulo={qtdPendencias === 1 ? "pendência" : "pendências"}
+              tom={qtdPendencias ? "erro" : "ok"}
+              onClick={qtdPendencias ? irParaPrimeiroProblema : undefined}
             />
-            <Indicador valor={avisos.length} rotulo="avisos" tom={avisos.length ? "aviso" : "neutro"} />
+            <Indicador valor={qtdAvisos} rotulo="avisos" tom={qtdAvisos ? "aviso" : "neutro"} />
             {naoConfirmadas > 0 && (
               <Indicador valor={naoConfirmadas} rotulo="a confirmar" tom="ia" />
             )}
           </div>
+          {(pedido.trim() || briefing.cliente.trim() || ordenadas.some(temConteudo) || importacao) && (
+            <button
+              className="icone perigo"
+              onClick={limpar}
+              title="Apaga o rascunho inteiro (pedido, alterações e conversa importada) para começar outro briefing do zero"
+            >
+              Novo briefing
+            </button>
+          )}
           {naoConfirmadas > 1 && (
             <button className="secundario" onClick={confirmarTodas}>
               Confirmar todas
@@ -801,8 +909,8 @@ export default function App() {
         {abaAtiva === "planilha" && (
           <AbaPlanilha
             quantidade={briefing.alteracoes.length}
-            pendencias={pendencias.length}
-            avisos={avisos.length}
+            pendencias={qtdPendencias}
+            avisos={qtdAvisos}
             naoConfirmadas={naoConfirmadas}
             planilha={planilha}
             inspecao={inspecao}
@@ -836,6 +944,13 @@ export default function App() {
             onRevisar={revisarIA}
             onVerAlteracoes={() => abrirAlteracao(1)}
             onIrParaPedido={() => setAba("pedido")}
+            modo={iaModo}
+            pronta={iaPronta}
+            chave={iaChave}
+            onChave={setIaChave}
+            provedor={iaProvedorEscolhido}
+            provedorSugerido={provedorPadrao}
+            onProvedor={setIaProvedorEscolhido}
           />
         )}
       </main>

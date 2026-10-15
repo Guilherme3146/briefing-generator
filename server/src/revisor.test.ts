@@ -55,6 +55,34 @@ test("o lote tem tamanho sensato", () => {
   assert.ok(TAMANHO_LOTE >= 5 && TAMANHO_LOTE <= 30);
 });
 
+// ------------------------------------------------------- modo "proprio": bring your own key
+
+test("modo 'proprio' sem chave do visitante recusa de cara, sem lote nenhum", async () => {
+  const antes = { ANTHROPIC_API_KEY: process.env.ANTHROPIC_API_KEY, GEMINI_API_KEY: process.env.GEMINI_API_KEY, IA_ATIVA: process.env.IA_ATIVA };
+  delete process.env.ANTHROPIC_API_KEY;
+  delete process.env.GEMINI_API_KEY;
+  delete process.env.IA_ATIVA;
+  const original = globalThis.fetch;
+  let chamou = false;
+  globalThis.fetch = (async () => {
+    chamou = true;
+    throw new Error("não deveria ter chamado a rede");
+  }) as typeof fetch;
+  try {
+    await assert.rejects(
+      () => revisar([alt({ solicitacao: "remover essa máquina" })]),
+      /Configurar IA/,
+    );
+  } finally {
+    globalThis.fetch = original;
+    for (const [k, v] of Object.entries(antes)) {
+      if (v === undefined) delete process.env[k];
+      else process.env[k] = v;
+    }
+  }
+  assert.equal(chamou, false);
+});
+
 test("o prompt manda ser conservador e não repetir o lint", () => {
   assert.match(PROMPT_REVISOR, /SEJA CONSERVADOR/);
   assert.match(PROMPT_REVISOR, /escolha \*\*executável\*\*/);

@@ -1,5 +1,7 @@
 import {
   ROTULO_SITUACAO,
+  contarAvisos,
+  contarPendencias,
   situacaoDe,
   type Achado,
   type Alteracao,
@@ -38,11 +40,10 @@ export default function AbaConferencia({
     })
     .filter((l) => l.sit !== "ok");
 
-  // o rascunho sem confirmar já tem o próprio cartão ("a confirmar")
-  const pendencias = achados.filter(
-    (x) => x.severidade === "erro" && x.regra !== "NAO_CONFIRMADO",
-  ).length;
-  const avisos = achados.filter((x) => x.severidade === "aviso").length;
+  // contagem por ALTERAÇÃO, não por regra — ver contarPendencias() em types.ts.
+  // O rascunho sem confirmar já tem o próprio cartão ("a confirmar").
+  const pendencias = contarPendencias(achados);
+  const avisos = contarAvisos(achados);
   const rascunhos = alteracoes.filter((a) => !a.confirmado).length;
   const travam = alteracoes.filter((a) => vereditoDe(a)?.executavel === false).length;
 

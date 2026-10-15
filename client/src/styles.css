@@ -447,3 +447,41 @@ textarea.grande { min-height: 260px; }
 .erro-geral { position: sticky; top: 12px; z-index: 40; box-shadow: 0 6px 18px rgb(24 49 83 / .18); }
 .aviso-box.erro-importacao { background: var(--coral-soft); border-bottom-color: var(--coral); color: #7d1b1b; }
 .aviso-box.erro-importacao strong { color: #7d1b1b; font-weight: 800; }
+/* ======================================================= Configurar IA === */
+.configurar-ia { border: 2px solid var(--violeta-escuro); }
+.configurar-ia.ok { border-color: var(--menta-escuro); background: var(--menta-soft); }
+.configurar-ia.pendente { background: var(--violeta-soft); }
+
+.campo-chave { display: flex; gap: 8px; flex-wrap: wrap; }
+.campo-chave input { flex: 1 1 220px; font-family: var(--mono); letter-spacing: .02em; }
+.campo-chave button { flex: 0 0 auto; }
+
+.configurar-ia a { color: var(--azul-forte); font-weight: 800; }
+.configurar-ia a:hover { text-decoration: underline; }
+
+/* ============================================================== Toasts === */
+.toasts {
+  position: fixed; left: 50%; bottom: 20px; transform: translateX(-50%);
+  z-index: 100; display: flex; flex-direction: column-reverse; gap: 8px;
+  pointer-events: none; max-width: calc(100vw - 40px);
+}
+.toast {
+  pointer-events: auto; display: flex; align-items: center; gap: 10px;
+  background: var(--marinho); color: #fff; font-weight: 700; font-size: .88rem;
+  padding: 11px 10px 11px 18px; border-radius: var(--r);
+  box-shadow: 0 8px 22px rgb(24 49 83 / .3);
+  animation: toast-entrar .18s ease-out;
+}
+.toast button {
+  border: 0; background: none; color: #fff; opacity: .75; padding: 0 6px;
+  font-size: 1.15rem; line-height: 1;
+}
+.toast button:hover { opacity: 1; }
+.toast.sucesso { background: var(--menta-escuro); }
+.toast.erro { background: var(--coral-escuro); }
+.toast.info { background: var(--marinho); }
+@keyframes toast-entrar {
+  from { opacity: 0; transform: translateY(8px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+@media (prefers-reduced-motion: reduce) { .toast { animation: none; } }

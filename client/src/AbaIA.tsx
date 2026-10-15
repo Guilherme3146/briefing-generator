@@ -1,5 +1,5 @@
 import { useState } from "react";
-import type { OrigemPedido, Uso } from "./types";
+import type { ModoIA, OrigemPedido, ProvedorIA, Uso } from "./types";
 
 type Props = {
   pedido: string;
@@ -17,12 +17,31 @@ type Props = {
   onRevisar: () => void;
   onVerAlteracoes: () => void;
   onIrParaPedido: () => void;
+  /** "servidor" = funciona de graça; "proprio" = precisa da chave abaixo */
+  modo: ModoIA;
+  /** true quando dá pra clicar e realmente disparar uma chamada */
+  pronta: boolean;
+  chave: string;
+  onChave: (v: string) => void;
+  provedor: ProvedorIA;
+  provedorSugerido: ProvedorIA;
+  onProvedor: (p: ProvedorIA) => void;
 };
 
 /**
- * Aba da IA. O app só a mostra quando o servidor informa que há chave
- * configurada (/api/health -> ia.ativa); sem chave ela nem existe na tela e o
- * resto do app funciona igual, preenchido à mão.
+ * Aba da IA. O app só a mostra quando o servidor informa que a IA existe
+ * (/api/health -> ia.ativa) — isso cobre dois casos bem diferentes:
+ *
+ *   modo "servidor" — o operador configurou uma chave no .env; funciona de
+ *                      graça para qualquer visitante, sem pedir nada.
+ *   modo "proprio"  — o servidor não tem chave nenhuma; cada visitante cola a
+ *                      PRÓPRIA (ex.: uma chave gratuita do Gemini) antes de
+ *                      usar. Fica só no navegador dele — nunca é salva no
+ *                      servidor, e só viaja pra lá quando ele aperta um botão
+ *                      de IA (ver App.tsx -> headersIA).
+ *
+ * Com IA_ATIVA=false no servidor, a aba nem aparece: o resto do app funciona
+ * igual, preenchido à mão.
  */
 export default function AbaIA(p: Props) {
   const temPedido = p.pedido.trim().length > 0;
@@ -30,6 +49,16 @@ export default function AbaIA(p: Props) {
 
   return (
     <div className="pagina estreita">
+      {p.modo === "proprio" && (
+        <ConfigurarIA
+          chave={p.chave}
+          onChave={p.onChave}
+          provedor={p.provedor}
+          provedorSugerido={p.provedorSugerido}
+          onProvedor={p.onProvedor}
+        />
+      )}
+
       <section className="painel ia">
         <header className="painel-topo">
           <h2>1. Ler o pedido</h2>
@@ -79,7 +108,12 @@ export default function AbaIA(p: Props) {
         )}
 
         <div className="acoes">
-          <button className="ia-botao cheio" onClick={p.onSugerir} disabled={p.sugerindo || !temPedido}>
+          <button
+            className="ia-botao cheio"
+            onClick={p.onSugerir}
+            disabled={p.sugerindo || !temPedido || !p.pronta}
+            title={p.pronta ? undefined : "Cole sua chave de IA acima primeiro"}
+          >
             {p.sugerindo
               ? p.origem === "reuniao"
                 ? "Lendo a reunião…"
@@ -140,7 +174,8 @@ export default function AbaIA(p: Props) {
           <button
             className="ia-botao"
             onClick={p.onRevisar}
-            disabled={p.revisando || p.aRevisar === 0}
+            disabled={p.revisando || p.aRevisar === 0 || !p.pronta}
+            title={p.pronta ? undefined : "Cole sua chave de IA acima primeiro"}
           >
             {p.revisando
               ? "Revisando…"
@@ -159,6 +194,100 @@ export default function AbaIA(p: Props) {
         </p>
       )}
     </div>
+  );
+}
+
+const LINKS_CHAVE: Record<ProvedorIA, { rotulo: string; url: string; nota: string }> = {
+  gemini: {
+    rotulo: "Google AI Studio",
+    url: "https://aistudio.google.com/apikey",
+    nota: "Tem camada gratuita — leva menos de 2 minutos e não pede cartão.",
+  },
+  anthropic: {
+    rotulo: "Console da Anthropic",
+    url: "https://console.anthropic.com/settings/keys",
+    nota: "Pago por uso (a chamada que este app faz custa centavos).",
+  },
+};
+
+/**
+ * Formulário de "traga sua própria chave" — só aparece no modo "proprio",
+ * quando o servidor não tem IA configurada para todo mundo.
+ *
+ * A chave nunca é mandada para lugar nenhum além do header das chamadas de IA
+ * deste próprio app (ver App.tsx -> headersIA); fica salva só no localStorage
+ * deste navegador, nunca no rascunho que pode ser exportado/limpo.
+ */
+function ConfigurarIA({
+  chave,
+  onChave,
+  provedor,
+  provedorSugerido,
+  onProvedor,
+}: {
+  chave: string;
+  onChave: (v: string) => void;
+  provedor: ProvedorIA;
+  provedorSugerido: ProvedorIA;
+  onProvedor: (p: ProvedorIA) => void;
+}) {
+  const [mostrar, setMostrar] = useState(false);
+  const link = LINKS_CHAVE[provedor];
+
+  return (
+    <section className={`painel ia configurar-ia ${chave.trim() ? "ok" : "pendente"}`}>
+      <header className="painel-topo">
+        <h2>Configurar IA</h2>
+        <p>
+          Esta instância não tem uma chave de IA hospedada — por isso ninguém gasta a chave de
+          outra pessoa. Cole a sua para usar; ela fica só neste navegador.
+        </p>
+      </header>
+
+      <div className="campo">
+        <span className="rotulo">Provedor</span>
+        <div className="segmentado" role="group">
+          <button className={provedor === "gemini" ? "ativo" : ""} onClick={() => onProvedor("gemini")}>
+            Gemini
+          </button>
+          <button className={provedor === "anthropic" ? "ativo" : ""} onClick={() => onProvedor("anthropic")}>
+            Anthropic
+          </button>
+        </div>
+        {provedor === provedorSugerido && (
+          <small>Sugestão desta instância — pode trocar à vontade.</small>
+        )}
+      </div>
+
+      <div className="campo">
+        <span className="rotulo">Chave de API</span>
+        <div className="campo-chave">
+          <input
+            type={mostrar ? "text" : "password"}
+            value={chave}
+            onChange={(e) => onChave(e.target.value)}
+            placeholder={provedor === "gemini" ? "AIza…" : "sk-ant-…"}
+            autoComplete="off"
+            spellCheck={false}
+          />
+          <button type="button" className="secundario" onClick={() => setMostrar((v) => !v)}>
+            {mostrar ? "Ocultar" : "Mostrar"}
+          </button>
+          {chave && (
+            <button type="button" className="secundario" onClick={() => onChave("")}>
+              Remover
+            </button>
+          )}
+        </div>
+        <small>
+          Não tem uma chave?{" "}
+          <a href={link.url} target="_blank" rel="noreferrer">
+            Criar no {link.rotulo} →
+          </a>{" "}
+          {link.nota}
+        </small>
+      </div>
+    </section>
   );
 }
 
