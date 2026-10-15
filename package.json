@@ -2,6 +2,7 @@
   "name": "briefing-generator",
   "version": "0.1.0",
   "private": true,
+  "type": "module",
   "description": "Gera o .xlsx de briefing de alteracao a partir do pedido do cliente. Fase 1: formulario + lint + gerador, sem IA.",
   "workspaces": [
     "server",

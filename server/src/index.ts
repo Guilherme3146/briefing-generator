@@ -421,7 +421,14 @@ if (fs.existsSync(path.join(DIST, "index.html"))) {
 // tem que ser o ÚLTIMO: erros do multer e do body-parser também viram JSON
 app.use(manipuladorDeErros);
 
-app.listen(PORTA, () => {
-  console.log(`servidor em http://localhost:${PORTA}`);
-  console.log(`template: ${TEMPLATE}`);
-});
+// Na Vercel quem sobe o processo HTTP é a plataforma (ver api/index.js, que
+// so importa `app` e deixa o runtime serverless chamar `app(req, res)`) —
+// chamar .listen() ali daria erro de porta já em uso a cada invocação fria.
+if (!process.env.VERCEL) {
+  app.listen(PORTA, () => {
+    console.log(`servidor em http://localhost:${PORTA}`);
+    console.log(`template: ${TEMPLATE}`);
+  });
+}
+
+export default app;
