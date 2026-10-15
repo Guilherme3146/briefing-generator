@@ -1,7 +1,15 @@
 import fs from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
-import { USO_ZERO, gerarEstruturado, somarUso, type Uso } from "./anthropic.js";
+import {
+  USO_ZERO,
+  ChaveNecessariaError,
+  gerarEstruturado,
+  modoIA,
+  somarUso,
+  type ChaveCliente,
+  type Uso,
+} from "./anthropic.js";
 import { RevisaoSchema, type Alteracao, type Revisao, type Veredito } from "./schema.js";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
@@ -64,16 +72,22 @@ function lotes<T>(itens: T[], tamanho: number): T[][] {
   return r;
 }
 
-async function revisarLote(alteracoes: Alteracao[]): Promise<{
+async function revisarLote(
+  alteracoes: Alteracao[],
+  chaveCliente?: ChaveCliente,
+): Promise<{
   vereditos: Veredito[];
   uso: Uso;
 }> {
-  const { dados: bruto, uso } = await gerarEstruturado<Revisao>({
-    sistema: PROMPT_REVISOR,
-    usuario: alteracoes.map(paraRevisao).join("\n\n"),
-    schema: RevisaoSchema,
-    maxTokens: 8000,
-  });
+  const { dados: bruto, uso } = await gerarEstruturado<Revisao>(
+    {
+      sistema: PROMPT_REVISOR,
+      usuario: alteracoes.map(paraRevisao).join("\n\n"),
+      schema: RevisaoSchema,
+      maxTokens: 8000,
+    },
+    chaveCliente,
+  );
 
   // o modelo pode alucinar uma ordem que nao existe no lote; descarta
   const pedidas = new Set(alteracoes.map((a) => a.ordem));
@@ -94,15 +108,26 @@ function normalizar(v: Veredito): Veredito {
   };
 }
 
-export async function revisar(alteracoes: Alteracao[]): Promise<ResultadoRevisao> {
+export async function revisar(
+  alteracoes: Alteracao[],
+  chaveCliente?: ChaveCliente,
+): Promise<ResultadoRevisao> {
   // alteracao sem descricao ja e pendencia do lint; nao gasta token com ela
   const elegiveis = alteracoes.filter((a) => a.solicitacao.trim().length > 0);
   if (elegiveis.length === 0) {
     return { vereditos: [], uso: { ...USO_ZERO }, faltantes: [] };
   }
 
+  // falha cedo, sem disparar lote nenhum: evita N chamadas simultaneas so para
+  // todas reprovarem com "falta chave"
+  if (modoIA() === "proprio" && !chaveCliente?.chave.trim()) {
+    throw new ChaveNecessariaError(
+      "Esta instância não tem uma chave de IA configurada. Cole a sua em Configurar IA.",
+    );
+  }
+
   const resultados = await Promise.all(
-    lotes(elegiveis, TAMANHO_LOTE).map((lote) => revisarLote(lote)),
+    lotes(elegiveis, TAMANHO_LOTE).map((lote) => revisarLote(lote, chaveCliente)),
   );
 
   let uso = resultados.reduce((acc, r) => somarUso(acc, r.uso), { ...USO_ZERO });
@@ -113,7 +138,7 @@ export async function revisar(alteracoes: Alteracao[]): Promise<ResultadoRevisao
   const faltando = elegiveis.filter((a) => !porOrdem.has(a.ordem));
   if (faltando.length > 0) {
     const segunda = await Promise.all(
-      lotes(faltando, TAMANHO_LOTE).map((lote) => revisarLote(lote)),
+      lotes(faltando, TAMANHO_LOTE).map((lote) => revisarLote(lote, chaveCliente)),
     );
     for (const r of segunda) {
       uso = somarUso(uso, r.uso);

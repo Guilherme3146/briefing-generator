@@ -1,7 +1,15 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { paraAlteracoes, sugerir, PROMPT_SISTEMA, PROMPT_REUNIAO, MAX_CARACTERES } from "./ia.js";
-import { iaAtiva, provedor, schemaParaGemini } from "./anthropic.js";
+import {
+  ChaveNecessariaError,
+  gerarEstruturado,
+  iaAtiva,
+  modoIA,
+  provedor,
+  provedorPadraoProprio,
+  schemaParaGemini,
+} from "./anthropic.js";
 import { lintAlteracao } from "./lint.js";
 import { AlteracaoSchema, SugestaoSchema } from "./schema.js";
 
@@ -120,24 +128,45 @@ async function comAmbiente(vars: Record<string, string>, fn: () => unknown | Pro
   }
 }
 
-test("a IA fica desligada sem chave", async () => {
-  await comAmbiente({}, () => assert.equal(iaAtiva(), false));
+// Tres modos, nao dois: "servidor" (chave no .env — funciona para qualquer
+// visitante), "proprio" (sem chave no .env — a IA aparece mas pede a chave do
+// visitante) e "desligada" (IA_ATIVA=false, esconde tudo). `iaAtiva()` so e
+// false em "desligada": "proprio" tambem mostra a aba de IA, so que com o
+// formulario de "cole sua chave" em vez de funcionar direto.
+
+test("sem chave nenhuma, a IA fica no modo 'proprio' — nao desligada", async () => {
+  await comAmbiente({}, () => {
+    assert.equal(modoIA(), "proprio");
+    assert.equal(iaAtiva(), true); // a aba aparece, so que pedindo a chave
+  });
 });
 
 test("IA_ATIVA=false desliga mesmo com chave presente", async () => {
-  await comAmbiente({ ANTHROPIC_API_KEY: "sk-teste", IA_ATIVA: "false" }, () =>
-    assert.equal(iaAtiva(), false),
-  );
+  await comAmbiente({ ANTHROPIC_API_KEY: "sk-teste", IA_ATIVA: "false" }, () => {
+    assert.equal(modoIA(), "desligada");
+    assert.equal(iaAtiva(), false);
+  });
   await comAmbiente({ ANTHROPIC_API_KEY: "sk-teste", IA_ATIVA: "true" }, () =>
-    assert.equal(iaAtiva(), true),
+    assert.equal(modoIA(), "servidor"),
   );
+});
+
+test("provedorPadraoProprio sugere gemini por padrao (tem camada gratuita)", async () => {
+  await comAmbiente({}, () => assert.equal(provedorPadraoProprio(), "gemini"));
+});
+
+test("IA_PROVEDOR vira a dica de provedorPadraoProprio, mesmo sem chave nenhuma", async () => {
+  await comAmbiente({ IA_PROVEDOR: "anthropic" }, () => {
+    assert.equal(modoIA(), "proprio");
+    assert.equal(provedorPadraoProprio(), "anthropic");
+  });
 });
 
 // ------------------------------------------------------------------- provedor
 
-test("so a chave do Gemini liga a IA, no provedor gemini", async () => {
+test("so a chave do Gemini liga o modo servidor, no provedor gemini", async () => {
   await comAmbiente({ GEMINI_API_KEY: "g-teste" }, () => {
-    assert.equal(iaAtiva(), true);
+    assert.equal(modoIA(), "servidor");
     assert.equal(provedor(), "gemini");
   });
 });
@@ -150,10 +179,15 @@ test("com as duas chaves, a Anthropic ganha, a menos que IA_PROVEDOR force o Gem
   );
 });
 
-test("forcar um provedor sem a chave dele desliga a IA", async () => {
-  await comAmbiente({ ANTHROPIC_API_KEY: "sk-teste", IA_PROVEDOR: "gemini" }, () =>
-    assert.equal(iaAtiva(), false),
-  );
+test("forcar um provedor sem a chave dele cai para 'proprio', nao desliga", async () => {
+  // o operador pediu Gemini mas nao configurou GEMINI_API_KEY: antes isso
+  // desligava a IA inteira; agora cai para "proprio" com Gemini como dica —
+  // plausivel como deploy deliberado de "sem chave hospedada, mas prefira Gemini"
+  await comAmbiente({ ANTHROPIC_API_KEY: "sk-teste", IA_PROVEDOR: "gemini" }, () => {
+    assert.equal(modoIA(), "proprio");
+    assert.equal(iaAtiva(), true);
+    assert.equal(provedorPadraoProprio(), "gemini");
+  });
 });
 
 // --------------------------------------------------------------------- Gemini
@@ -332,4 +366,90 @@ test("texto acima do limite é recusado antes de gastar chamada", async () => {
     () => sugerir("x".repeat(MAX_CARACTERES.mensagem + 1), "mensagem"),
     /limite para mensagem/,
   );
+});
+
+// ------------------------------------------------------- modo "proprio": bring your own key
+
+test("modo 'proprio' sem chave do visitante recusa SEM chamar rede nenhuma", async () => {
+  const original = globalThis.fetch;
+  let chamou = false;
+  globalThis.fetch = (async () => {
+    chamou = true;
+    throw new Error("não deveria ter chamado a rede");
+  }) as typeof fetch;
+  try {
+    await comAmbiente({}, async () => {
+      assert.equal(modoIA(), "proprio");
+      await assert.rejects(
+        () =>
+          gerarEstruturado({
+            sistema: "x",
+            usuario: "y",
+            schema: SugestaoSchema,
+            maxTokens: 100,
+          }),
+        (e: unknown) => e instanceof ChaveNecessariaError,
+      );
+    });
+  } finally {
+    globalThis.fetch = original;
+    assert.equal(chamou, false);
+  }
+});
+
+test("modo 'servidor' IGNORA a chave que o visitante mandou — ninguém redireciona a conta de outro", async () => {
+  await comGeminiFalso(respostaGemini({ alteracoes: [], trechos_ignorados: [] }), async (chamadas) => {
+    // o .env ja tem GEMINI_API_KEY="g-teste" (ver comGeminiFalso); um header
+    // de cliente tentando usar outra chave nao pode ter efeito nenhum aqui
+    await gerarEstruturado(
+      { sistema: "x", usuario: "y", schema: SugestaoSchema, maxTokens: 100 },
+      { provedor: "gemini", chave: "chave-de-outra-pessoa" },
+    );
+    const header = (chamadas[0].init.headers as Record<string, string>)["x-goog-api-key"];
+    assert.equal(header, "g-teste");
+  });
+});
+
+test("modo 'proprio' usa a chave que o visitante colou (não existe chave no .env)", async () => {
+  const original = globalThis.fetch;
+  const chamadas: { url: string; init: RequestInit }[] = [];
+  globalThis.fetch = (async (url: string, init: RequestInit) => {
+    chamadas.push({ url: String(url), init });
+    return new Response(
+      JSON.stringify(respostaGemini({ alteracoes: [base], trechos_ignorados: [] })),
+      { status: 200 },
+    );
+  }) as typeof fetch;
+  try {
+    await comAmbiente({}, async () => {
+      assert.equal(modoIA(), "proprio");
+      const r = await sugerir("qualquer pedido", "mensagem", {
+        provedor: "gemini",
+        chave: "chave-do-visitante",
+      });
+      assert.equal(r.alteracoes.length, 1);
+    });
+    const header = (chamadas[0].init.headers as Record<string, string>)["x-goog-api-key"];
+    assert.equal(header, "chave-do-visitante");
+  } finally {
+    globalThis.fetch = original;
+  }
+});
+
+test("modo 'proprio': chave recusada pelo provedor vira ChaveNecessariaError, não erro genérico", async () => {
+  const original = globalThis.fetch;
+  globalThis.fetch = (async () =>
+    new Response(JSON.stringify({ error: { message: "API key not valid" } }), {
+      status: 400,
+    })) as typeof fetch;
+  try {
+    await comAmbiente({}, async () => {
+      await assert.rejects(
+        () => sugerir("qualquer pedido", "mensagem", { provedor: "gemini", chave: "chave-errada" }),
+        (e: unknown) => e instanceof ChaveNecessariaError && /Configurar IA/.test((e as Error).message),
+      );
+    });
+  } finally {
+    globalThis.fetch = original;
+  }
 });

@@ -56,6 +56,31 @@ export type Uso = {
 /** De onde veio o pedido. Muda o prompt e o que a IA pode tratar como final. */
 export type OrigemPedido = "mensagem" | "reuniao";
 
+export type ProvedorIA = "anthropic" | "gemini";
+
+/**
+ * Tres modos, nao um true/false:
+ *
+ *   "servidor"  — o operador configurou uma chave no .env. Funciona para
+ *                 qualquer visitante, sem pedir nada — modo de deploy
+ *                 interno/gerenciado, onde o operador banca o uso.
+ *   "proprio"   — nao ha chave no servidor. A IA aparece na tela, mas cada
+ *                 visitante cola a PROPRIA chave antes de usar. E o que torna
+ *                 seguro publicar isto sem login: ninguem gasta a chave de
+ *                 outra pessoa.
+ *   "desligada" — o operador apagou a IA da tela de proposito (IA_ATIVA=false
+ *                 no servidor). Nada de IA aparece, nem o formulario de chave.
+ */
+export type ModoIA = "servidor" | "proprio" | "desligada";
+
+export type InfoIA = {
+  ativa: boolean;
+  modo: ModoIA;
+  modelo: string | null;
+  provedorPadrao: ProvedorIA | null;
+  maxCaracteres: Record<OrigemPedido, number>;
+};
+
 export type RespostaSugestao = {
   alteracoes: Alteracao[];
   trechos_ignorados: string[];
@@ -176,6 +201,27 @@ export function situacaoDe(a: Alteracao, achados: Achado[], veredito?: Veredito)
   if (veredito && !veredito.executavel) return "trava";
   if (achados.length > 0) return "aviso";
   return "ok";
+}
+
+/**
+ * Conta ALTERAÇÕES distintas com pendência bloqueante — não regras violadas.
+ *
+ * Uma alteração sem "onde" e sem "o que fazer" ao mesmo tempo dispara dois
+ * achados de erro (ONDE_AUSENTE + O_QUE_FAZER_AUSENTE), mas é uma linha só na
+ * lista "O que falta resolver" (agrupada por ordem via situacaoDe). Contar
+ * achados.length nesse caso mostra 9 quando só existem 8 alterações quebradas.
+ * NAO_CONFIRMADO fica de fora porque já tem indicador próprio ("a confirmar").
+ */
+export function contarPendencias(achados: Achado[]): number {
+  const ordens = new Set(
+    achados.filter((a) => a.severidade === "erro" && a.regra !== "NAO_CONFIRMADO").map((a) => a.ordem),
+  );
+  return ordens.size;
+}
+
+/** Mesma lógica de `contarPendencias`, para o indicador de avisos. */
+export function contarAvisos(achados: Achado[]): number {
+  return new Set(achados.filter((a) => a.severidade === "aviso").map((a) => a.ordem)).size;
 }
 
 // ---------------------------------------------------------------- conversa

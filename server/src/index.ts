@@ -17,7 +17,14 @@ import {
   primeiraLinhaLivre,
   type Print,
 } from "./xlsx.js";
-import { iaAtiva, MODELO } from "./anthropic.js";
+import {
+  ChaveNecessariaError,
+  iaAtiva,
+  modoIA,
+  provedorPadraoProprio,
+  MODELO,
+  type ChaveCliente,
+} from "./anthropic.js";
 import { sugerir, MAX_CARACTERES } from "./ia.js";
 import { revisar } from "./revisor.js";
 import { montarPerguntas } from "./perguntas.js";
@@ -49,18 +56,43 @@ const EXTENSOES: Record<string, Print["extensao"]> = {
 };
 
 app.get("/api/health", (_req, res) => {
+  const modo = modoIA();
   res.json({
     ok: true,
     template: TEMPLATE,
-    ia: { ativa: iaAtiva(), modelo: iaAtiva() ? MODELO : null, maxCaracteres: MAX_CARACTERES },
+    ia: {
+      ativa: modo !== "desligada",
+      modo,
+      // so ha um "modelo ativo" fixo no modo servidor — no "proprio" cada
+      // visitante escolhe provedor/chave, entao nao existe um unico nome aqui
+      modelo: modo === "servidor" ? MODELO : null,
+      // dica de qual provedor pre-selecionar no formulario de "colar sua chave"
+      provedorPadrao: modo === "proprio" ? provedorPadraoProprio() : null,
+      maxCaracteres: MAX_CARACTERES,
+    },
   });
 });
 
 /**
+ * A chave que o PROPRIO VISITANTE colou no navegador, se houver.
+ *
+ * So importa no modo "proprio" (servidor sem chave configurada) — nos outros
+ * modos e ignorada (ver o comentario em gerarEstruturado). Nunca e logada nem
+ * guardada: vive so pelo tempo da chamada.
+ */
+function chaveClienteDoRequest(req: express.Request): ChaveCliente | undefined {
+  const chave = req.get("X-IA-Chave")?.trim();
+  const provedorHeader = req.get("X-IA-Provedor")?.trim().toLowerCase();
+  if (!chave || (provedorHeader !== "anthropic" && provedorHeader !== "gemini")) return undefined;
+  return { provedor: provedorHeader, chave };
+}
+
+/**
  * Fase 2 — a IA separa o texto do cliente em alteracoes.
  *
- * Fica atras de flag: sem ANTHROPIC_API_KEY (ou com IA_ATIVA=false) a rota
- * responde 503 e o app inteiro continua funcionando no modo Fase 1.
+ * Fica atras de flag: com IA_ATIVA=false a rota responde 503 e o app inteiro
+ * continua funcionando sem IA. Sem chave no servidor (modo "proprio"), a rota
+ * segue adiante e pede a chave do visitante — so da 401 se ela nao vier.
  */
 app.post("/api/sugerir", async (req, res) => {
   if (!iaAtiva()) {
@@ -72,7 +104,11 @@ app.post("/api/sugerir", async (req, res) => {
   const texto = typeof req.body?.texto === "string" ? req.body.texto : "";
   const origem = OrigemPedidoSchema.safeParse(req.body?.origem);
   try {
-    const r = await sugerir(texto, origem.success ? origem.data : "mensagem");
+    const r = await sugerir(
+      texto,
+      origem.success ? origem.data : "mensagem",
+      chaveClienteDoRequest(req),
+    );
     console.log(
       `[sugerir:${r.origem}] ${r.alteracoes.length} alterações` +
         (r.decisoes_revertidas.length
@@ -83,6 +119,9 @@ app.post("/api/sugerir", async (req, res) => {
     );
     res.json(r);
   } catch (e) {
+    if (e instanceof ChaveNecessariaError) {
+      return res.status(401).json({ erro: e.message, precisa_chave: true });
+    }
     const msg = e instanceof Error ? e.message : String(e);
     console.error("[sugerir]", msg);
     res.status(502).json({ erro: msg });
@@ -146,7 +185,7 @@ app.post("/api/revisar-ia", async (req, res) => {
     return res.status(400).json({ erro: "Briefing inválido", detalhes: parsed.error.issues });
   }
   try {
-    const r = await revisar(parsed.data.alteracoes);
+    const r = await revisar(parsed.data.alteracoes, chaveClienteDoRequest(req));
     const reprovadas = r.vereditos.filter((v) => !v.executavel).length;
     console.log(
       `[revisar-ia] ${r.vereditos.length} vereditos (${reprovadas} com pergunta) | ` +
@@ -155,6 +194,9 @@ app.post("/api/revisar-ia", async (req, res) => {
     if (r.faltantes.length) console.warn("[revisar-ia] sem veredito:", r.faltantes);
     res.json(r);
   } catch (e) {
+    if (e instanceof ChaveNecessariaError) {
+      return res.status(401).json({ erro: e.message, precisa_chave: true });
+    }
     const msg = e instanceof Error ? e.message : String(e);
     console.error("[revisar-ia]", msg);
     res.status(502).json({ erro: msg });

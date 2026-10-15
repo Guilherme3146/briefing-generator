@@ -164,6 +164,38 @@ Ela faz **uma coisa**: pegar o texto corrido do cliente e devolver a lista de
 alterações separadas. Não calcula status, não valida lacuna (isso é o lint,
 determinístico), não escolhe imagem, não decide nada.
 
+### Três modos, não um `true/false` (Fase 7)
+
+A primeira versão tinha só ligado/desligado — mas isso não sustenta uma
+plataforma **sem cadastro e login**: se o `.env` tem uma chave, ela é usada por
+**qualquer visitante anônimo** que abrir o link, na sua conta. Por isso são três
+modos, decididos só pelo que está no `.env`:
+
+| O que está no `.env` | Modo | O que o visitante vê |
+|---|---|---|
+| `IA_ATIVA=false` | `desligada` | A aba de IA some inteira. Nem o formulário de chave aparece. |
+| `ANTHROPIC_API_KEY` ou `GEMINI_API_KEY` preenchida | `servidor` | A IA funciona sozinha, sem pedir nada — você banca o uso. |
+| nada preenchido | `proprio` | A aba de IA aparece, mas com um formulário "Configurar IA": cada visitante cola a **própria** chave antes de usar. |
+
+No modo `proprio`, a chave:
+
+- fica só no `localStorage` do navegador de quem colou (chave própria,
+  `briefing-ia-chave-v1` — **fora** do rascunho, então "Limpar" não a apaga);
+- nunca é logada nem persistida no servidor — vive só pelos milissegundos da
+  chamada, como um header (`X-IA-Chave` / `X-IA-Provedor`) em `/api/sugerir` e
+  `/api/revisar-ia`;
+- é **ignorada** se o `.env` já tiver uma chave — em modo `servidor` o header do
+  cliente não tem efeito nenhum, de propósito: ninguém redireciona a conta de
+  outra pessoa só mandando um header diferente.
+
+Uma chave recusada pelo provedor (errada, revogada, sem permissão) vira **401**
+com uma mensagem que aponta de volta para "Configurar IA" — nunca o 502 genérico
+de "a chamada falhou", que faria o visitante achar que é bug do app.
+
+`/api/health` informa o modo atual (`ia.modo`) e, em modo `proprio`, uma dica de
+qual provedor pré-selecionar (`ia.provedorPadrao` — Gemini por padrão, tem faixa
+gratuita e não pede cartão; força outro via `IA_PROVEDOR`).
+
 Isso não é invenção nossa — é o procedimento da casa. O FAQ do template,
 pergunta 9: *"todo documento enviado pelo cliente deve ser transcrito pelo
 analista de implementação e separado em tópicos"*, porque documentos de cliente
@@ -527,13 +559,16 @@ npm start          # API + tela, na porta 3001 (PORT para mudar)
 ```
 
 Depois do `build`, o próprio servidor entrega `client/dist`. Precisa de Node 22+
-(usa `process.loadEnvFile`), do `templates/briefing-modelo.xlsx` e, se quiser a
-IA, da chave no ambiente (`GEMINI_API_KEY` ou `ANTHROPIC_API_KEY`).
+(usa `process.loadEnvFile`) e do `templates/briefing-modelo.xlsx`.
 
 Pontos de atenção:
 
-- **Não há login.** Quem alcança a URL usa o app, e com a IA ligada gasta a cota
-  da chave. Deixe atrás de VPN/rede interna ou de um proxy com senha.
+- **Não há login — e por isso a chave de IA tem duas formas de hospedar.**
+  Deixe **sem chave no `.env`** (modo `proprio`, Fase 7 acima) para publicar o
+  link livremente: cada visitante cola a própria chave, e ninguém gasta a sua.
+  Só coloque `ANTHROPIC_API_KEY`/`GEMINI_API_KEY` no `.env` (modo `servidor`)
+  atrás de VPN/rede interna ou de um proxy com senha — nesse modo, qualquer um
+  que alcance a URL usa a IA de graça, na sua cota.
 - **Hospedagem só de PHP (XAMPP, cPanel comum) não serve** — precisa rodar Node.
 - **O rascunho é por navegador.** Outro computador começa vazio; é o preço de não
   ter banco, e o que o torna simples de hospedar.
