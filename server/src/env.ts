@@ -24,8 +24,22 @@ export const RAIZ = process.env.VERCEL
   ? process.cwd()
   : path.resolve(__dirname, "..", "..");
 
-try {
-  process.loadEnvFile(path.join(RAIZ, ".env"));
-} catch {
-  /* sem .env — segue com as variaveis do ambiente, modo Fase 1 */
+/**
+ * NUNCA ler .env na Vercel (ou em qualquer runtime serverless que injete
+ * variaveis direto no ambiente).
+ *
+ * Isso ja causou um vazamento real: o `@vercel/nft`, que decide quais
+ * arquivos empacotar na funcao, rastreia chamadas de fs em tempo de build —
+ * incluindo esta `loadEnvFile(".env")`. Resultado: o `.env` local (com chave
+ * de API de verdade) foi parar DENTRO do pacote da funcao publicada, mesmo
+ * estando no `.gitignore` (gitignore decide o que sobe pro git, nao o que o
+ * tracer da Vercel empacota). Na Vercel as variaveis ja chegam prontas em
+ * `process.env` pelo painel — ler arquivo e redundante e, como se viu, perigoso.
+ */
+if (!process.env.VERCEL) {
+  try {
+    process.loadEnvFile(path.join(RAIZ, ".env"));
+  } catch {
+    /* sem .env — segue com as variaveis do ambiente, modo Fase 1 */
+  }
 }

@@ -1,0 +1,15 @@
+# Segunda barreira contra o vazamento que já aconteceu uma vez: o tracer de
+# build da Vercel (@vercel/nft) empacota qualquer arquivo que o código lê em
+# runtime, SEM respeitar o .gitignore — foi assim que um .env real (com chave
+# de API de verdade) acabou dentro do pacote de uma função publicada.
+#
+# server/src/env.ts já tem a correção definitiva (nunca chama loadEnvFile na
+# Vercel), mas este arquivo garante que mesmo um .env esquecido na raiz nunca
+# suba, não importa o que o código tente ler.
+.env
+.env.*
+!.env.example
+
+credentials/
+*.pem
+*.key
