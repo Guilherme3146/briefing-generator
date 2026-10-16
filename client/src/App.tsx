@@ -958,6 +958,7 @@ export default function App() {
       <footer className="rodape">
         <strong>EasyBriefing</strong>
         <span>O rascunho fica salvo neste navegador. A IA só sugere; quem confirma é você.</span>
+        <span className="rodape-creditos">Feito por Guilherme Melo e Camila Ferreira</span>
       </footer>
     </div>
   );

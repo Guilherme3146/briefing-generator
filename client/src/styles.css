@@ -485,3 +485,4 @@ textarea.grande { min-height: 260px; }
   to { opacity: 1; transform: translateY(0); }
 }
 @media (prefers-reduced-motion: reduce) { .toast { animation: none; } }
+.rodape-creditos { margin-top: 6px; color: #8fa0c2; font-size: .78rem; font-weight: 600; }

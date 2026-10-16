@@ -574,3 +574,7 @@ Pontos de atenção:
   ter banco, e o que o torna simples de hospedar.
 
 Ver `SYSTEM-DESIGN-briefing.md` para o desenho completo.
+
+## Autoria
+
+Feito por **Guilherme Melo** e **Camila Ferreira**.
