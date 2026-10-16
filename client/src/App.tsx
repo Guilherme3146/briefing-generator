@@ -744,9 +744,9 @@ export default function App() {
 
       <header className="topo">
         <div className="topo-esq">
-          <div className="logo" aria-hidden="true">B</div>
+          <div className="logo" aria-hidden="true">E</div>
           <div>
-            <h1>Gerador de Briefing</h1>
+            <h1>EasyBriefing</h1>
             <p className="sub">
               {briefing.cliente.trim() || "sem cliente definido"}
               {" · "}
@@ -956,7 +956,7 @@ export default function App() {
       </main>
 
       <footer className="rodape">
-        <strong>Gerador de Briefing</strong>
+        <strong>EasyBriefing</strong>
         <span>O rascunho fica salvo neste navegador. A IA só sugere; quem confirma é você.</span>
       </footer>
     </div>

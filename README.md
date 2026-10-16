@@ -1,4 +1,4 @@
-# Gerador de Briefing
+# EasyBriefing
 
 Transforma o pedido de alteração em um `.xlsx` no template que a produção já lê.
 
