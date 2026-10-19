@@ -256,7 +256,10 @@ textarea.grande { min-height: 260px; }
 .avisos .aviso .pergunta { color: var(--marinho); }
 .avisos .aviso .mini { flex: none; background: var(--branco); }
 .tag { font-size: .66rem; font-weight: 800; text-transform: uppercase; letter-spacing: .07em; padding: 1px 9px; border-radius: 999px; background: rgb(255 255 255 / .75); white-space: nowrap; }
-.faq { font-size: .74rem; font-weight: 700; opacity: .8; }
+.faq {
+  font-size: .74rem; font-weight: 700; opacity: .8;
+  border-bottom: 1px dotted currentColor; cursor: help;
+}
 
 .aviso-box { flex-direction: column; gap: 6px; align-items: flex-start; background: var(--amarelo-soft); border-bottom-color: var(--amarelo); color: #6b4700; }
 .aviso-box ul { margin: 0; padding-left: 1.1rem; }

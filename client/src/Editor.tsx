@@ -1,4 +1,4 @@
-import type { Achado, Alteracao, Veredito } from "./types";
+import { dicaFaq, type Achado, type Alteracao, type Veredito } from "./types";
 
 const ROTULO_CONF = {
   alta: "Alta confiança",
@@ -156,7 +156,11 @@ export default function Editor({
                   <span className="tag">
                     {ehDuvida ? "perguntar" : x.severidade === "erro" ? "pendência" : "aviso"}
                   </span>
-                  {x.faq !== "—" && <span className="faq">FAQ {x.faq}</span>}
+                  {x.faq !== "—" && (
+                    <span className="faq" title={dicaFaq(x.faq)}>
+                      FAQ {x.faq}
+                    </span>
+                  )}
                   <p>{x.mensagem}</p>
                 </div>
                 {ehDuvida && (

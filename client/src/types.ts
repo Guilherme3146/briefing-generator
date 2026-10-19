@@ -45,6 +45,26 @@ export type Achado = {
   mensagem: string;
 };
 
+/**
+ * A etiqueta "FAQ A7" sozinha não diz nada pra quem está usando — é só um
+ * código. Esse dicionário traz a pergunta de verdade (texto literal da aba
+ * FAQ do template), pra virar dica ao passar o mouse: a regra não é opinião
+ * do sistema, é citação do procedimento que a própria equipe já documentou.
+ */
+export const PERGUNTA_FAQ: Record<string, string> = {
+  A7: "Como posso escrever uma solicitação de alteração da forma mais clara possível e que garanta o entendimento por parte da produção?",
+  A13: "Como posso especificar cores para serem alteradas no site?",
+  A14: "Preciso solicitar a troca/inserção de fontes no site, como devo proceder?",
+  A15: "Preciso solicitar a troca/inserção de ícones no site, como devo proceder?",
+  A16: "Preciso solicitar a troca/inserção de imagens no site, como devo proceder?",
+};
+
+/** Dica para o chip "FAQ X": a pergunta citada, ou undefined se o código não for conhecido. */
+export function dicaFaq(codigo: string): string | undefined {
+  const pergunta = PERGUNTA_FAQ[codigo];
+  return pergunta ? `Pergunta ${codigo} do FAQ do template: "${pergunta}"` : undefined;
+}
+
 export type Uso = {
   entrada: number;
   saida: number;
