@@ -129,7 +129,7 @@ app.post("/api/sugerir", async (req, res) => {
 });
 
 /**
- * Importa uma conversa (PDF/TXT/VTT do Teams) e a le POR REGRA, sem IA: devolve
+ * Importa uma conversa (PDF/DOCX/TXT/VTT do Teams) e a le POR REGRA, sem IA: devolve
  * as tarefas que parecem pedidos, o que ficou de fora e por que, e de onde cada
  * tarefa saiu. Funciona com ou sem chave de IA.
  */

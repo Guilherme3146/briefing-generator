@@ -34,15 +34,16 @@ export default function PainelConversa(p: Props) {
       <header className="painel-topo">
         <h2>Importar uma conversa</h2>
         <p>
-          Envie a transcrição da reunião (PDF, TXT ou VTT). O programa lê por regras, sem IA: separa
-          quem falou, separa o que parece pedido do que é conversa e deixa as tarefas para você conferir.
+          Envie a transcrição da reunião (PDF, DOCX, TXT ou VTT). O programa lê por regras, sem IA:
+          separa quem falou, separa o que parece pedido do que é conversa e deixa as tarefas para
+          você conferir.
         </p>
       </header>
 
       <label className="anexar">
         <input
           type="file"
-          accept=".pdf,.txt,.vtt,application/pdf,text/plain,text/vtt"
+          accept=".pdf,.docx,.txt,.vtt,application/pdf,application/vnd.openxmlformats-officedocument.wordprocessingml.document,text/plain,text/vtt"
           onChange={(e) => {
             const f = e.target.files?.[0];
             e.target.value = "";

@@ -7,7 +7,7 @@ Transforma o pedido de alteração em um `.xlsx` no template que a produção j�
 - **Fase 3** — revisor semântico + perguntas prontas para mandar ao cliente.
 - **Fase 4** — acrescentar a uma planilha que já está em execução.
 - **Fase 5** — extração a partir de transcrição de reunião.
-- **Fase 6** — importar a conversa (PDF/TXT/VTT do Teams) e ler **por regras, sem IA**.
+- **Fase 6** — importar a conversa (PDF/DOCX/TXT/VTT do Teams) e ler **por regras, sem IA**.
 
 As fases 2 e 3 são **opcionais por desenho**: sem `ANTHROPIC_API_KEY` o app roda
 inteiro no modo Fase 1 — as rotas de IA respondem 503, os botões somem da tela e
@@ -479,7 +479,7 @@ bom, mas só outras reuniões dizem a taxa de acerto de verdade. Os testes
 Quatro abas numeradas, na ordem em que o trabalho acontece, mais uma quinta que
 só existe quando a IA está ligada:
 
-1. **Pedido** — cliente, URL base, importação da conversa (PDF/TXT/VTT) e o
+1. **Pedido** — cliente, URL base, importação da conversa (PDF/DOCX/TXT/VTT) e o
    texto colado do cliente.
 2. **Alterações** — três colunas: lista compacta, editor da alteração
    selecionada e o pedido original ao lado, para responder sem trocar de janela.
@@ -520,7 +520,7 @@ server/src/ia.ts                 extrator: texto do cliente -> cards
 server/src/revisor.ts            revisor semântico, em lotes
 server/src/perguntas.ts          monta a lista de perguntas (sem IA)
 server/src/conversa.ts           lê a conversa por regras (sem IA): tarefas, descartados, alertas
-server/src/arquivo.ts            texto de PDF/TXT/VTT enviado pelo analista
+server/src/arquivo.ts            texto de PDF/DOCX/TXT/VTT enviado pelo analista
 server/src/prompts/*.md          os prompts de sistema, versionados
 client/src/App.tsx               estado, chamadas à API e as abas
 client/src/Aba*.tsx              uma por aba (Pedido, Alterações, Conferência, Planilha, IA)
@@ -535,7 +535,7 @@ client/src/PainelConversa.tsx    painel de importação e conferência da conver
 | Rota | Entrada | Saída |
 |---|---|---|
 | `GET /api/health` | — | `{ ok, template, ia: { ativa, modelo } }` |
-| `POST /api/importar` | multipart: `arquivo` (PDF/TXT/VTT) + `clientes` opcional (JSON com os nomes a tratar como cliente) | `{ arquivo, texto, formato, falantes[], tarefas[], descartados[], alertas[], resumo }` — sem IA; 400 sem arquivo, 422 se não achar texto ou o PDF estiver corrompido |
+| `POST /api/importar` | multipart: `arquivo` (PDF/DOCX/TXT/VTT) + `clientes` opcional (JSON com os nomes a tratar como cliente) | `{ arquivo, texto, formato, falantes[], tarefas[], descartados[], alertas[], resumo }` — sem IA; 400 sem arquivo, 422 se não achar texto ou o PDF estiver corrompido |
 | `POST /api/sugerir` | `{ texto, origem: "mensagem" \| "reuniao" }` | `{ alteracoes[], trechos_ignorados[], decisoes_revertidas[], origem, uso }` — 503 se a IA estiver desligada |
 | `POST /api/revisar-ia` | `{ briefing }` | `{ vereditos[], uso, faltantes[] }` — 503 se a IA estiver desligada |
 | `POST /api/perguntas` | `{ briefing, vereditos?, prints? }` | `{ itens[], texto }` — determinístico, sem IA |

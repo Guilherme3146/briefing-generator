@@ -1,6 +1,40 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
+import JSZip from "jszip";
 import { decodificarTexto, ErroDeArquivo, textoDoArquivo } from "./arquivo.js";
+
+/**
+ * .docx mínimo, de verdade (ZIP com word/document.xml válido), um parágrafo
+ * por string. `quebraManual` insere um <w:br/> no meio do primeiro parágrafo,
+ * pra testar quebra de linha manual (Shift+Enter) separado de fim de parágrafo.
+ */
+async function docxCom(paragrafos: string[], quebraManual = false): Promise<Buffer> {
+  const corpo = paragrafos
+    .map((p, i) => {
+      if (i === 0 && quebraManual) {
+        const [a, b] = p.split("|");
+        return `<w:p><w:r><w:t xml:space="preserve">${a}</w:t><w:br/><w:t xml:space="preserve">${b}</w:t></w:r></w:p>`;
+      }
+      return `<w:p><w:r><w:t xml:space="preserve">${p}</w:t></w:r></w:p>`;
+    })
+    .join("");
+  const documentXml =
+    `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>` +
+    `<w:document xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main">` +
+    `<w:body>${corpo}</w:body></w:document>`;
+
+  const zip = new JSZip();
+  zip.file(
+    "[Content_Types].xml",
+    `<?xml version="1.0" encoding="UTF-8" standalone="yes"?><Types xmlns="http://schemas.openxmlformats.org/package/2006/content-types"><Default Extension="xml" ContentType="application/xml"/><Override PartName="/word/document.xml" ContentType="application/vnd.openxmlformats-officedocument.wordprocessingml.document.main+xml"/></Types>`,
+  );
+  zip.file(
+    "_rels/.rels",
+    `<?xml version="1.0" encoding="UTF-8" standalone="yes"?><Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships"><Relationship Id="rId1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/officeDocument" Target="word/document.xml"/></Relationships>`,
+  );
+  zip.file("word/document.xml", documentXml);
+  return zip.generateAsync({ type: "nodebuffer" });
+}
 
 /** PDF mínimo, escrito à mão (sem tabela xref: o pdfjs reconstrói), com o texto dado. */
 function pdfCom(linhas: string[]): Buffer {
@@ -51,10 +85,53 @@ test("conteúdo binário é recusado com mensagem clara, não lido como lixo", (
 
 // ------------------------------------------------------------- tipos de arquivo
 
-test("DOCX: recusado pela extensão, com o caminho para resolver", async () => {
+// -------------------------------------------------------------------- DOCX
+
+test("DOCX: lê o texto de cada parágrafo, com acentuação", async () => {
+  const buffer = await docxCom(["Rebecca Marques 0:04", "Preciso trocar o logo — atenção à ação, né?"]);
+  const texto = await textoDoArquivo("reuniao.docx", buffer);
+  assert.match(texto, /Rebecca Marques 0:04/);
+  assert.match(texto, /Preciso trocar o logo — atenção à ação, né\?/);
+});
+
+test("DOCX: fim de parágrafo e quebra manual (Shift+Enter) viram linhas separadas", async () => {
+  const buffer = await docxCom(["Linha um|Linha dois (mesmo parágrafo)", "Segundo parágrafo"], true);
+  const texto = await textoDoArquivo("reuniao.docx", buffer);
+  const linhas = texto.split("\n").map((l) => l.trim()).filter(Boolean);
+  assert.deepEqual(linhas, ["Linha um", "Linha dois (mesmo parágrafo)", "Segundo parágrafo"]);
+});
+
+test("DOCX corrompido (não é um ZIP válido) dá erro claro, não estoura", async () => {
   await assert.rejects(
-    () => textoDoArquivo("reuniao.docx", Buffer.from("qualquer coisa")),
-    (e: unknown) => e instanceof ErroDeArquivo && e.status === 415 && /Word/.test(e.message) && /PDF ou TXT/.test(e.message),
+    () => textoDoArquivo("reuniao.docx", Buffer.from("isso não é um zip")),
+    (e: unknown) => e instanceof ErroDeArquivo && /corrompido/.test(e.message),
+  );
+});
+
+test("DOCX sem word/document.xml (zip válido, mas não é Word) dá erro claro", async () => {
+  const zip = new JSZip();
+  zip.file("oi.txt", "nao e um word de verdade");
+  const buffer = await zip.generateAsync({ type: "nodebuffer" });
+  await assert.rejects(
+    () => textoDoArquivo("reuniao.docx", buffer),
+    (e: unknown) => e instanceof ErroDeArquivo && /Não encontrei o conteúdo/.test(e.message),
+  );
+});
+
+test("DOCX sem texto nenhum (só estrutura vazia) dá erro claro", async () => {
+  const buffer = await docxCom([]);
+  await assert.rejects(
+    () => textoDoArquivo("reuniao.docx", buffer),
+    (e: unknown) => e instanceof ErroDeArquivo && /não tem texto/.test(e.message),
+  );
+});
+
+test(".doc antigo (binário, não é .docx) continua recusado com o caminho para resolver", async () => {
+  // assinatura do formato OLE2 do Word 97-2003
+  const bufferDocAntigo = Buffer.from([0xd0, 0xcf, 0x11, 0xe0, 0, 0, 0, 0]);
+  await assert.rejects(
+    () => textoDoArquivo("reuniao.doc", bufferDocAntigo),
+    (e: unknown) => e instanceof ErroDeArquivo && e.status === 415 && /\.docx/.test(e.message),
   );
 });
 

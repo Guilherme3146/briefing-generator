@@ -4,7 +4,7 @@
   "rewrites": [{ "source": "/api/(.*)", "destination": "/api" }],
   "functions": {
     "api/index.js": {
-      "includeFiles": "{templates/**,server/dist/prompts/**}"
+      "includeFiles": "{templates/**,server/dist/prompts/**,node_modules/pdfjs-dist/legacy/build/pdf.worker.mjs}"
     }
   }
 }

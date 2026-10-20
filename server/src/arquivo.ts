@@ -1,9 +1,10 @@
 import path from "node:path";
 import { getDocument } from "pdfjs-dist/legacy/build/pdf.mjs";
+import JSZip from "jszip";
 
 /**
  * Tira o texto de um arquivo enviado pelo analista: PDF (exportação do Teams),
- * TXT, VTT ou SRT. Tudo local: não chama IA nem serviço externo.
+ * DOCX (Word), TXT, VTT ou SRT. Tudo local: não chama IA nem serviço externo.
  *
  * Todo defeito previsível vira `ErroDeArquivo`, com uma mensagem que o analista
  * entende e sabe resolver; o resto é erro de programa.
@@ -25,8 +26,7 @@ export const MAX_PAGINAS = Number(process.env.IMPORTAR_MAX_PAGINAS ?? 600);
 export const TEMPO_MAXIMO_MS = Number(process.env.IMPORTAR_TEMPO_MAXIMO_MS ?? 60_000);
 
 const NAO_LIDOS: Record<string, string> = {
-  ".docx": "do Word (.docx)",
-  ".doc": "do Word (.doc)",
+  ".doc": "do Word antigo (.doc) — só o .docx é lido",
   ".rtf": "RTF",
   ".odt": "ODT",
   ".xlsx": "do Excel",
@@ -38,7 +38,7 @@ const NAO_LIDOS: Record<string, string> = {
   ".zip": "compactados",
 };
 
-const AJUDA = 'Abra o arquivo e salve como PDF ou TXT, ou cole o texto no campo "Pedido do cliente".';
+const AJUDA = 'Abra o arquivo e salve como PDF, DOCX ou TXT, ou cole o texto no campo "Pedido do cliente".';
 
 /** Reconhece pelo conteúdo o que a extensão não entrega (arquivo renomeado). */
 function tipoPeloConteudo(b: Buffer): string | null {
@@ -54,6 +54,7 @@ export async function textoDoArquivo(nome: string, buffer: Buffer): Promise<stri
   const extensao = path.extname(nome).toLowerCase();
   const ehPdf = buffer.subarray(0, 5).toString("latin1") === "%PDF-" || extensao === ".pdf";
   if (ehPdf) return lerPdf(buffer);
+  if (extensao === ".docx") return lerDocx(buffer);
 
   const pelaExtensao = NAO_LIDOS[extensao];
   const pelaAssinatura = tipoPeloConteudo(buffer);
@@ -168,4 +169,60 @@ function traduzirErroDePdf(e: unknown): Error {
     return new ErroDeArquivo("O arquivo está corrompido ou não é um PDF válido. Abra-o no leitor de PDF para conferir.");
   }
   return e instanceof Error ? e : new Error(String(e));
+}
+
+/**
+ * .docx é um ZIP com XML dentro (o texto visível mora em word/document.xml) —
+ * mesma família de formato que o .xlsx que este projeto já gera. Em vez de
+ * trazer uma biblioteca de DOCX inteira (que arrastaria as mesmas armadilhas
+ * de empacotamento que o pdfjs já causou numa Vercel — ver a correção do
+ * pdf.worker.mjs em vercel.json), usamos o `jszip` que o ExcelJS já depende
+ * de qualquer forma, e lemos o XML na mão. Perde formatação (negrito,
+ * tabela), mas o texto — que é tudo que a leitura por regras precisa — sai
+ * certo, inclusive acentuação.
+ */
+async function lerDocx(buffer: Buffer): Promise<string> {
+  let zip: JSZip;
+  try {
+    zip = await JSZip.loadAsync(buffer);
+  } catch {
+    throw new ErroDeArquivo("O arquivo .docx está corrompido ou não é um Word válido. Abra-o no Word para conferir.");
+  }
+
+  const documentoXml = zip.file("word/document.xml");
+  if (!documentoXml) {
+    throw new ErroDeArquivo(
+      "Não encontrei o conteúdo dentro do .docx. O arquivo pode estar corrompido ou protegido.",
+    );
+  }
+
+  const xml = await documentoXml.async("string");
+  const texto = textoDoXmlDocx(xml);
+  if (!texto.trim()) {
+    throw new ErroDeArquivo("Este .docx não tem texto (só imagem ou está vazio).");
+  }
+  return texto;
+}
+
+/**
+ * Tira as tags do XML do Word e preserva a estrutura de linha:
+ *   <w:br/>  — quebra de linha manual (Shift+Enter)       -> \n
+ *   <w:tab/> — tabulação                                   -> \t
+ *   </w:p>   — fim de parágrafo                             -> \n
+ * O conteúdo de dentro de <w:t>...</w:t> (o texto em si) não é tocado — só as
+ * tags ao redor somem — então espaço interno a uma run de texto sobrevive.
+ */
+function textoDoXmlDocx(xml: string): string {
+  let s = xml;
+  s = s.replace(/<w:br\s*\/?>/g, "\n");
+  s = s.replace(/<w:tab\s*\/?>/g, "\t");
+  s = s.replace(/<\/w:p>/g, "\n");
+  s = s.replace(/<[^>]+>/g, "");
+  s = s
+    .replace(/&lt;/g, "<")
+    .replace(/&gt;/g, ">")
+    .replace(/&quot;/g, '"')
+    .replace(/&apos;/g, "'")
+    .replace(/&amp;/g, "&");
+  return s.replace(/\n{3,}/g, "\n\n").trim();
 }
