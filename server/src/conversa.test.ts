@@ -56,8 +56,8 @@ test("separa as falas por quem falou, juntando as linhas quebradas", () => {
   assert.ok(!turnos[1].texto.includes("\n"));
 });
 
-test("carimbo numérico longo do gravador (ex.: Fireflies) no fim da linha é descartado", () => {
-  const bruto = `Jailson Lima 0:05\nOkay. 576072292608\n\nJailson Lima 0:12\nIsso mesmo, pode trocar o logo. 576072292608\n`;
+test("linha só com ID numérico longo do gravador (ex.: Fireflies) entre as falas é descartada", () => {
+  const bruto = `Jailson Lima 0:05\nOkay.\n576072292608\n\nJailson Lima 0:12\nIsso mesmo, pode trocar o logo.\n576072292608\n`;
   const { turnos } = lerTurnos(bruto);
   assert.equal(turnos[0].texto, "Okay.");
   assert.equal(turnos[1].texto, "Isso mesmo, pode trocar o logo.");

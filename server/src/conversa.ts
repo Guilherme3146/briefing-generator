@@ -80,9 +80,9 @@ const RE_FALANTE = new RegExp(
   `^(?<nome>${NOME}(?:\\s+(?:${NOME}|${PARTICULA})){0,5})\\s+(?<tempo>\\d{1,2}:\\d{2}(?::\\d{2})?)$`,
   "u",
 );
-const RE_META = /^.+\s(?:começou|parou)\sa\stranscri[çc][ãa]o\s*$/iu;
-/** alguns gravadores (ex.: Fireflies) carimbam um ID numérico longo no fim de cada linha da fala */
-const RE_ID_GRAVADOR = /\s+\d{9,}\s*$/;
+const RE_META = /^.+\s(?:começou|parou|iniciou)\sa\stranscri[çc][ãa]o\s*$/iu;
+/** alguns gravadores (ex.: Fireflies) intercalam uma linha só com um ID numérico longo entre as falas */
+const RE_ID_GRAVADOR = /^\d{9,}$/;
 
 function segundos(tempo: string): number {
   return tempo.split(":").reduce((acc, p) => acc * 60 + Number(p), 0);
@@ -108,16 +108,14 @@ function turnosTeams(bruto: string): Turno[] {
       fechar();
       continue;
     }
+    if (RE_ID_GRAVADOR.test(linha)) continue;
     const m = RE_FALANTE.exec(linha);
     if (m?.groups) {
       fechar();
       atual = { quem: m.groups.nome.trim(), tempo: m.groups.tempo, partes: [] };
       continue;
     }
-    if (atual) {
-      const semId = linha.replace(RE_ID_GRAVADOR, "").trim();
-      if (semId) atual.partes.push(semId);
-    }
+    if (atual) atual.partes.push(linha);
     // linhas antes da primeira fala são o cabeçalho (título, data): ignoradas
   }
   fechar();
