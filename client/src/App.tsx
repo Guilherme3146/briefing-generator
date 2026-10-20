@@ -49,7 +49,7 @@ function explicarFalhaDaApi(status: number, corpo: string): string {
 }
 
 export default function App() {
-  const { mostrar: toast } = useToast();
+  const { mostrar: toast, confirmar: confirmarAcao } = useToast();
 
   const [briefing, setBriefing] = useState<Briefing>(() => {
     try {
@@ -278,9 +278,9 @@ export default function App() {
     setAba("alteracoes");
   }
 
-  function remover(ordem: number) {
+  async function remover(ordem: number) {
     const a = briefing.alteracoes.find((x) => x.ordem === ordem);
-    if (a && temConteudo(a) && !confirm(`Remover a alteração ${ordem}?`)) return;
+    if (a && temConteudo(a) && !(await confirmarAcao(`Remover a alteração ${ordem}?`, { confirmar: "Remover" }))) return;
 
     const restantes = briefing.alteracoes.length - 1;
     setBriefing((b) => ({
@@ -369,9 +369,10 @@ export default function App() {
       if (
         !clientes &&
         (!pedido.trim() ||
-          confirm(
+          (await confirmarAcao(
             "Colocar o texto da conversa no campo \"Pedido do cliente\"? É ele que aparece ao lado das alterações, com os trechos destacados.",
-          ))
+            { confirmar: "Colocar" },
+          )))
       ) {
         setPedido(data.texto);
       }
@@ -435,8 +436,8 @@ export default function App() {
     setPromovidos((s) => new Set(s).add(d.inicio));
   }
 
-  function limpar() {
-    if (!confirm("Apagar o rascunho e começar do zero?")) return;
+  async function limpar() {
+    if (!(await confirmarAcao("Apagar o rascunho e começar do zero?", { confirmar: "Apagar" }))) return;
     setImportacao(null);
     setErroImportacao(null);
     setArquivoConversa(null);
@@ -464,9 +465,10 @@ export default function App() {
     const preenchidas = briefing.alteracoes.filter(temConteudo).length;
     if (
       preenchidas > 0 &&
-      !confirm(
+      !(await confirmarAcao(
         `Isso substitui as ${preenchidas} ${preenchidas === 1 ? "alteração preenchida" : "alterações preenchidas"} pelo rascunho da IA. Continuar?`,
-      )
+        { confirmar: "Substituir" },
+      ))
     ) {
       return;
     }
