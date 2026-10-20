@@ -81,6 +81,8 @@ const RE_FALANTE = new RegExp(
   "u",
 );
 const RE_META = /^.+\s(?:começou|parou)\sa\stranscri[çc][ãa]o\s*$/iu;
+/** alguns gravadores (ex.: Fireflies) carimbam um ID numérico longo no fim de cada linha da fala */
+const RE_ID_GRAVADOR = /\s+\d{9,}\s*$/;
 
 function segundos(tempo: string): number {
   return tempo.split(":").reduce((acc, p) => acc * 60 + Number(p), 0);
@@ -112,7 +114,10 @@ function turnosTeams(bruto: string): Turno[] {
       atual = { quem: m.groups.nome.trim(), tempo: m.groups.tempo, partes: [] };
       continue;
     }
-    if (atual) atual.partes.push(linha);
+    if (atual) {
+      const semId = linha.replace(RE_ID_GRAVADOR, "").trim();
+      if (semId) atual.partes.push(semId);
+    }
     // linhas antes da primeira fala são o cabeçalho (título, data): ignoradas
   }
   fechar();

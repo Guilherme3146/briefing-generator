@@ -56,6 +56,14 @@ test("separa as falas por quem falou, juntando as linhas quebradas", () => {
   assert.ok(!turnos[1].texto.includes("\n"));
 });
 
+test("carimbo numérico longo do gravador (ex.: Fireflies) no fim da linha é descartado", () => {
+  const bruto = `Jailson Lima 0:05\nOkay. 576072292608\n\nJailson Lima 0:12\nIsso mesmo, pode trocar o logo. 576072292608\n`;
+  const { turnos } = lerTurnos(bruto);
+  assert.equal(turnos[0].texto, "Okay.");
+  assert.equal(turnos[1].texto, "Isso mesmo, pode trocar o logo.");
+  assert.ok(turnos.every((t) => !/\d{9,}/.test(t.texto)));
+});
+
 test("o cabeçalho e as marcas de início da transcrição não viram fala", () => {
   const { turnos } = lerTurnos(CONVERSA);
   assert.ok(turnos.every((t) => !/transcri/i.test(t.texto)));
