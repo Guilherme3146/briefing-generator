@@ -131,10 +131,11 @@ test("preserva abas, fórmula de progresso e os prints do template", async () =>
   assert.equal(wb.getWorksheet("FAQ")!.rowCount, 52);
 });
 
-test("print novo entra ancorado na linha certa, sem derrubar os que já estavam", async () => {
+test("print novo vai pra aba Prints, sem derrubar o que já estava na Alteração", async () => {
   const base = await planilhaEmExecucao();
   const wb0 = await abrir(base);
   const ws0 = abaAlteracao(wb0);
+  // print manual antigo, do jeito que a produção já colava direto no Excel antes desta mudança
   const id = wb0.addImage({ buffer: Buffer.from(PNG_1PX, "base64") as any, extension: "png" });
   ws0.addImage(id, { tl: { col: 4, row: 2 } as any, ext: { width: 100, height: 50 } });
   const comPrint = Buffer.from(await wb0.xlsx.writeBuffer());
@@ -145,13 +146,23 @@ test("print novo entra ancorado na linha certa, sem derrubar os que já estavam"
     prints: [{ ordem: 1, buffer: Buffer.from(PNG_1PX, "base64"), extensao: "png" }],
   });
 
-  const ws = abaAlteracao(await abrir(r.arquivo));
-  const imgs = ws.getImages();
-  assert.equal(imgs.length, 2, "o print antigo continua lá");
-  assert.ok(
-    imgs.some((i) => i.range.tl.nativeRow + 1 === 6 && i.range.tl.nativeCol === 4),
-    "o print novo fica na coluna E da linha 6",
-  );
+  const wb = await abrir(r.arquivo);
+  const ws = abaAlteracao(wb);
+  assert.equal(ws.getImages().length, 1, "o print manual antigo, embutido na célula, continua lá");
+
+  const wsPrints = wb.getWorksheet("Prints")!;
+  // os 3 prints fixos de instrução do template + o novo que acabou de entrar
+  assert.equal(wsPrints.getImages().length, 4, "o print novo entra na aba Prints, sem sumir nem sobrepor os fixos");
+
+  // o rótulo fica numa linha livre, abaixo de tudo que o template já tinha (inclusive os 3 prints fixos, lá embaixo)
+  let linhaRotulo = -1;
+  wsPrints.eachRow({ includeEmpty: false }, (row, numero) => {
+    if (/Linha 6/.test(textoDaCelula(row.getCell(1).value))) linhaRotulo = numero;
+  });
+  assert.ok(linhaRotulo > 0, "a aba Prints identifica de qual linha da Alteração é o print");
+
+  const obs = textoDaCelula(ws.getCell(6, 5).value);
+  assert.match(obs, new RegExp(`aba "Prints", linha ${linhaRotulo}`), "a célula de Obs. Implementação aponta onde achar o print");
 });
 
 // ------------------------------------------------------------------- travas

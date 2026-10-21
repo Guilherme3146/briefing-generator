@@ -3,7 +3,7 @@ import assert from "node:assert/strict";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import ExcelJS from "exceljs";
-import { gerarPlanilha, nomeDoArquivo, ABA_ALTERACAO } from "./xlsx.js";
+import { gerarPlanilha, nomeDoArquivo, textoDaCelula, ABA_ALTERACAO } from "./xlsx.js";
 import { BriefingSchema } from "./schema.js";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
@@ -66,6 +66,35 @@ test("preserva os prints fixos da aba Prints e o FAQ", async () => {
   const wb = await gerarEAbrir();
   assert.equal(wb.getWorksheet("Prints")!.getImages().length, 3);
   assert.equal(wb.getWorksheet("FAQ")!.rowCount, 52);
+});
+
+test("prints vão pra aba Prints, não ficam mais embutidos e sobrepostos na célula", async () => {
+  const PNG_1PX =
+    "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNk+A8AAQUBAScY42YAAAAASUVORK5CYII=";
+  const buffer = await gerarPlanilha({
+    templatePath: TEMPLATE,
+    briefing,
+    prints: [
+      { ordem: 1, buffer: Buffer.from(PNG_1PX, "base64"), extensao: "png" },
+      { ordem: 1, buffer: Buffer.from(PNG_1PX, "base64"), extensao: "png" },
+    ],
+  });
+  const wb = new ExcelJS.Workbook();
+  await wb.xlsx.load(buffer as any);
+
+  const wsAlt = wb.getWorksheet(ABA_ALTERACAO)!;
+  assert.equal(wsAlt.getImages().length, 0, "nenhum print fica embutido na aba Alteração");
+  assert.match(
+    textoDaCelula(wsAlt.getCell("E3").value),
+    /aba "Prints", linha \d+/,
+    "a célula de Obs. Implementação aponta pra aba Prints",
+  );
+
+  const wsPrints = wb.getWorksheet("Prints")!;
+  // 3 prints fixos de instrução do template + os 2 novos desta alteração
+  assert.equal(wsPrints.getImages().length, 5);
+  const linhas = wsPrints.getImages().map((i) => i.range.tl.nativeRow);
+  assert.equal(new Set(linhas).size, linhas.length, "os dois prints da mesma alteração não se sobrepõem");
 });
 
 test("escreve as colunas A-F a partir da linha 3", async () => {

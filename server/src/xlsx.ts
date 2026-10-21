@@ -112,6 +112,31 @@ export function primeiraLinhaLivre(ws: ExcelJS.Worksheet): number {
 
 // ------------------------------------------------------------------ escrita
 
+const ABA_PRINTS = "Prints";
+/** tamanho de cada print colado na aba Prints — igual ao que já era usado embutido na célula */
+const LARGURA_PRINT = 420;
+const ALTURA_PRINT = 210;
+/** linhas reservadas por print (rótulo + imagem + respiro), pra um nunca cobrir o de baixo */
+const PASSO_LINHAS_PRINT = 13;
+
+/**
+ * Por baixo de que linha a aba Prints está livre: olha tanto as imagens quanto
+ * o texto já colados nela (manualmente pela produção, ou por uma rodada
+ * anterior deste mesmo programa) e devolve a próxima linha livre, com uma de
+ * respiro. As linhas 1-2 são o cabeçalho de instrução, fixo no template.
+ */
+function proximaLinhaLivreEmPrints(ws: ExcelJS.Worksheet): number {
+  let maxLinha = 2;
+  for (const img of ws.getImages()) {
+    const fundo = (img.range.br?.nativeRow ?? img.range.tl.nativeRow) + 1; // 0-based -> 1-based
+    if (fundo > maxLinha) maxLinha = fundo;
+  }
+  ws.eachRow({ includeEmpty: false }, (_row, numero) => {
+    if (numero > maxLinha) maxLinha = numero;
+  });
+  return maxLinha + 2;
+}
+
 function escrever(
   wb: ExcelJS.Workbook,
   ws: ExcelJS.Worksheet,
@@ -121,6 +146,15 @@ function escrever(
 ): void {
   const ordenadas = [...alteracoes].sort((a, b) => a.ordem - b.ordem);
   const textos = comMarcadoresDeGrupo(ordenadas);
+
+  const printsPorOrdem = new Map<number, Print[]>();
+  for (const p of prints) printsPorOrdem.set(p.ordem, [...(printsPorOrdem.get(p.ordem) ?? []), p]);
+
+  // aba Prints já existe no template (é onde a produção cola print à mão hoje);
+  // os prints anexados no app vão pra lá também, nunca sobrepostos — ver a
+  // correção do bug de sobreposição que motivou isso
+  const wsPrints = wb.getWorksheet(ABA_PRINTS);
+  let proximaLinhaPrints = wsPrints ? proximaLinhaLivreEmPrints(wsPrints) : 0;
 
   ordenadas.forEach((alt, i) => {
     const linha = linhaInicial + i;
@@ -138,23 +172,43 @@ function escrever(
     ws.getCell(linha, 2).value = alt.url_pagina.trim() || null; // B
     ws.getCell(linha, 3).value = alt.secao.trim() || null; // C
     ws.getCell(linha, 4).value = linksDaCelula(alt.link_conteudo); // D
-    ws.getCell(linha, 5).value = alt.obs_implementacao.trim() || null; // E
+
+    const printsDaAlteracao = printsPorOrdem.get(alt.ordem) ?? [];
+    let obs = alt.obs_implementacao.trim();
+    if (printsDaAlteracao.length && wsPrints) {
+      const linhaBloco = proximaLinhaPrints;
+      const rotulo = `Linha ${linha} — ${(textos[i] || alt.solicitacao || "").replace(/\s+/g, " ").trim().slice(0, 90)}`;
+      const celulaRotulo = wsPrints.getCell(linhaBloco, 1);
+      celulaRotulo.value = rotulo;
+      celulaRotulo.font = { bold: true };
+
+      printsDaAlteracao.forEach((print, k) => {
+        const id = wb.addImage({ buffer: print.buffer as any, extension: print.extensao });
+        wsPrints.addImage(id, {
+          tl: { col: 0, row: linhaBloco + k * PASSO_LINHAS_PRINT } as any, // 0-based: uma linha abaixo do rótulo
+          ext: { width: LARGURA_PRINT, height: ALTURA_PRINT },
+        });
+      });
+      proximaLinhaPrints = linhaBloco + printsDaAlteracao.length * PASSO_LINHAS_PRINT + 1;
+
+      const aviso = `📎 ${printsDaAlteracao.length > 1 ? "Prints desta alteração estão" : "Print desta alteração está"} na aba "Prints", linha ${linhaBloco}.`;
+      obs = obs ? `${aviso}\n\n${obs}` : aviso;
+    } else if (printsDaAlteracao.length) {
+      // aba Prints não existe neste arquivo (planilha externa, fora do template) —
+      // mantém o comportamento antigo, embutido na própria célula, pra não perder a imagem
+      printsDaAlteracao.forEach((print) => {
+        const id = wb.addImage({ buffer: print.buffer as any, extension: print.extensao });
+        ws.addImage(id, {
+          tl: { col: COLUNA_PRINT, row: linha - 1 } as any,
+          ext: { width: LARGURA_PRINT, height: ALTURA_PRINT },
+        });
+      });
+    }
+
+    ws.getCell(linha, 5).value = obs || null; // E
     ws.getCell(linha, 6).value = alt.obs_producao.trim() || null; // F
     // G, H, I: nao tocar — pertencem a producao / implementacao / design
   });
-
-  // prints vao ancorados na coluna E da linha da propria alteracao,
-  // que e exatamente como a equipe cola hoje direto no Excel
-  for (const print of prints) {
-    const indice = ordenadas.findIndex((a) => a.ordem === print.ordem);
-    if (indice < 0) continue;
-    const linha = linhaInicial + indice;
-    const id = wb.addImage({ buffer: print.buffer as any, extension: print.extensao });
-    ws.addImage(id, {
-      tl: { col: COLUNA_PRINT, row: linha - 1 } as any, // 0-based
-      ext: { width: 420, height: 210 },
-    });
-  }
 }
 
 export type OpcoesGeracao = {

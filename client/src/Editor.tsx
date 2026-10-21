@@ -242,7 +242,7 @@ export default function Editor({
 
       <div className="campo">
         <span className="rotulo">
-          Prints <em>vão colados na coluna E, nesta linha</em>
+          Prints <em>vão colados na aba "Prints" da planilha, identificados por esta linha</em>
         </span>
         <div className="prints">
           <label className="anexar">
