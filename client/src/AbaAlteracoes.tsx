@@ -7,12 +7,14 @@ import {
   type Alteracao,
   type FonteTrecho,
   type Veredito,
+  type Estimativa,
 } from "./types";
 
 type Props = {
   alteracoes: Alteracao[];
   selecionada: number;
   achados: Achado[];
+  estimativas: Record<number, Estimativa>;
   vereditoDe: (a: Alteracao) => Veredito | undefined;
   prints: Record<number, File[]>;
   pedido: string;
@@ -114,6 +116,7 @@ export default function AbaAlteracoes(p: Props) {
         alteracao={atual}
         posicao={indice + 1}
         total={p.alteracoes.length}
+        estimativa={p.estimativas[atual.ordem]}
         achados={p.achados.filter((x) => x.ordem === atual.ordem)}
         veredito={p.vereditoDe(atual)}
         prints={p.prints[atual.ordem] ?? []}

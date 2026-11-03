@@ -34,6 +34,8 @@ export const AlteracaoSchema = z.object({
   confirmado: z.boolean().default(true),
   /** perguntas que a IA nao soube responder; viram aviso no card */
   duvidas: z.array(z.string()).default([]),
+  /** nível de esforço (1-5) escolhido pela analista; vazio = vale a estimativa por regra. Não vai para a planilha. */
+  nivel: z.number().int().min(1).max(5).optional(),
 });
 
 export const BriefingSchema = z.object({

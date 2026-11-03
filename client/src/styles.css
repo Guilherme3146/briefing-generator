@@ -503,3 +503,8 @@ textarea.grande { min-height: 260px; }
 .toast-confirmar:hover { opacity: .9; }
 .rodape-creditos { margin-top: 6px; color: #8fa0c2; font-size: .78rem; font-weight: 600; }
 .erro-importacao span { white-space: pre-line; }
+
+.esforco { display: flex; flex-direction: column; gap: 4px; margin: 0 0 14px; max-width: 420px; }
+.esforco select { padding: 8px 10px; border: 2px solid var(--borda, #c9d3e6); border-radius: 8px; font: inherit; background: #fff; }
+.esforco small { color: #5b6b8c; }
+.esforco-resumo .painel-topo h2 em { font-style: normal; font-weight: 600; font-size: .85rem; color: #5b6b8c; }

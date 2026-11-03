@@ -26,6 +26,7 @@ import {
   type ChaveCliente,
 } from "./anthropic.js";
 import { sugerir, MAX_CARACTERES } from "./ia.js";
+import { estimar } from "./estimativa.js";
 import { revisar } from "./revisor.js";
 import { montarPerguntas } from "./perguntas.js";
 import { OrigemPedidoSchema, ULTIMA_LINHA_DADOS, VereditoSchema } from "./schema.js";
@@ -269,7 +270,8 @@ app.post("/api/revisar", (req, res) => {
   }
   const contextos = contextosDeBody(req.body?.prints);
   const achados = lintBriefing(parsed.data, contextos);
-  res.json({ achados, bloqueado: temErro(achados) });
+  const estimativas = Object.fromEntries(parsed.data.alteracoes.map((a) => [a.ordem, estimar(a)]));
+  res.json({ achados, bloqueado: temErro(achados), estimativas });
 });
 
 /**

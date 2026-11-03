@@ -1,4 +1,4 @@
-import { dicaFaq, type Achado, type Alteracao, type Veredito } from "./types";
+import { HORAS_POR_NIVEL, dicaFaq, type Achado, type Alteracao, type Estimativa, type Veredito } from "./types";
 
 const ROTULO_CONF = {
   alta: "Alta confiança",
@@ -11,6 +11,7 @@ type Props = {
   posicao: number;
   total: number;
   achados: Achado[];
+  estimativa?: Estimativa;
   veredito?: Veredito;
   prints: File[];
   onCampo: (ordem: number, campo: keyof Alteracao, valor: unknown) => void;
@@ -36,6 +37,7 @@ export default function Editor({
   posicao,
   total,
   achados,
+  estimativa,
   veredito,
   prints,
   onCampo,
@@ -90,6 +92,28 @@ export default function Editor({
           </button>
         </div>
       </header>
+
+      {estimativa && (
+        <label className="esforco" title={estimativa.motivos.join(" · ")}>
+          <span className="rotulo">
+            Esforço <em>estimativa, não é prazo</em>
+          </span>
+          <select
+            value={a.nivel ?? 0}
+            onChange={(e) => onCampo(a.ordem, "nivel", Number(e.target.value) || undefined)}
+          >
+            <option value={0}>Automático (pela regra)</option>
+            {[1, 2, 3, 4, 5].map((n) => (
+              <option key={n} value={n}>
+                Nível {n} · ~{HORAS_POR_NIVEL[n]}h
+              </option>
+            ))}
+          </select>
+          <small>
+            Nível {estimativa.nivel} · ~{estimativa.horas}h{estimativa.manual ? " (escolhido por você)" : ""}: {estimativa.motivos[0]}
+          </small>
+        </label>
+      )}
 
       {!a.confirmado && (
         <div className={`faixa ${daConversa ? "regra" : "ia"}`}>
