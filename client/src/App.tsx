@@ -16,7 +16,6 @@ import {
   type Alteracao,
   type Briefing,
   type DescartadoConversa,
-  type Estimativa,
   type FonteAlteracao,
   type Importacao,
   type Inspecao,
@@ -73,7 +72,6 @@ export default function App() {
 
   const [prints, setPrints] = useState<Record<number, File[]>>({});
   const [achados, setAchados] = useState<Achado[]>([]);
-  const [estimativas, setEstimativas] = useState<Record<number, Estimativa>>({});
   const [gerando, setGerando] = useState(false);
   const [sugerindo, setSugerindo] = useState(false);
   const [erro, setErro] = useState<string | null>(null);
@@ -195,9 +193,7 @@ export default function App() {
           body: JSON.stringify({ briefing, prints: contagemPrints }),
         });
         if (!r.ok) return;
-        const corpo = await r.json();
-        setAchados(corpo.achados ?? []);
-        setEstimativas(corpo.estimativas ?? {});
+        setAchados((await r.json()).achados ?? []);
       } catch {
         /* servidor fora do ar: a tela continua utilizavel */
       }
@@ -918,7 +914,6 @@ export default function App() {
               alteracoes={ordenadas}
               selecionada={selecionada}
               achados={achados}
-              estimativas={estimativas}
               vereditoDe={vereditoDe}
               prints={prints}
               pedido={pedido}
@@ -941,7 +936,6 @@ export default function App() {
 
         {abaAtiva === "conferencia" && (
           <AbaConferencia
-            estimativas={estimativas}
             alteracoes={ordenadas}
             achados={achados}
             vereditoDe={vereditoDe}

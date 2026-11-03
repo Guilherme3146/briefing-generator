@@ -5,7 +5,6 @@ import {
   situacaoDe,
   type Achado,
   type Alteracao,
-  type Estimativa,
   type RespostaPerguntas,
   type Veredito,
 } from "./types";
@@ -13,7 +12,6 @@ import {
 type Props = {
   alteracoes: Alteracao[];
   achados: Achado[];
-  estimativas: Record<number, Estimativa>;
   vereditoDe: (a: Alteracao) => Veredito | undefined;
   perguntas: RespostaPerguntas | null;
   copiado: boolean;
@@ -26,7 +24,6 @@ type Props = {
 export default function AbaConferencia({
   alteracoes,
   achados,
-  estimativas,
   vereditoDe,
   perguntas,
   copiado,
@@ -50,26 +47,8 @@ export default function AbaConferencia({
   const rascunhos = alteracoes.filter((a) => !a.confirmado).length;
   const travam = alteracoes.filter((a) => vereditoDe(a)?.executavel === false).length;
 
-  const horasDe = (a: Alteracao) => estimativas[a.ordem]?.horas ?? 0;
-  const aprovadas = alteracoes.filter((a) => a.confirmado);
-  const horasAprovadas = aprovadas.reduce((s, a) => s + horasDe(a), 0);
-  const horasRascunho = alteracoes.filter((a) => !a.confirmado).reduce((s, a) => s + horasDe(a), 0);
-
   return (
     <div className="pagina">
-      <section className="painel esforco-resumo">
-        <header className="painel-topo">
-          <h2>
-            Esforço estimado: ~{horasAprovadas}h <em>aprovadas ({aprovadas.length} de {alteracoes.length})</em>
-          </h2>
-          <p>
-            {horasRascunho > 0 ? `+ ~${horasRascunho}h nos rascunhos ainda sem confirmar. ` : ""}
-            É só uma estimativa por regra (nível 1 = 1h até nível 5 = 10h) e muda conforme você aprova ou
-            troca o nível de cada alteração. Não use como prazo.
-          </p>
-        </header>
-      </section>
-
       <div className="resumo-cartoes">
         <Cartao valor={pendencias} rotulo="pendências" tom={pendencias ? "erro" : "ok"} dica="Bloqueiam a geração" />
         <Cartao valor={avisos} rotulo="avisos" tom={avisos ? "aviso" : "neutro"} dica="Não bloqueiam" />

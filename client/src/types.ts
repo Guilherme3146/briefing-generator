@@ -27,14 +27,7 @@ export type Alteracao = {
   duvidas: string[];
   /** só nos cards vindos da conversa: o trecho original, para conferir */
   fonte?: FonteAlteracao;
-  /** nível de esforço (1-5) escolhido pela analista; vazio = vale a estimativa por regra */
-  nivel?: number;
 };
-
-/** Estimativa de esforço de um card — só uma estimativa, nunca um prazo. */
-export type Estimativa = { nivel: number; horas: number; motivos: string[]; manual: boolean };
-
-export const HORAS_POR_NIVEL: Record<number, number> = { 1: 1, 2: 2, 3: 3, 4: 6, 5: 10 };
 
 export type Briefing = {
   cliente: string;
