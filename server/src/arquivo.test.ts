@@ -171,3 +171,46 @@ test("PDF corrompido: mensagem clara em vez de erro interno", async () => {
     (e: unknown) => e instanceof ErroDeArquivo && /corrompido|PDF válido/.test(e.message),
   );
 });
+
+// ------------------------------------------------------------------------ PPTX
+
+async function pptxCom(slides: string[][]): Promise<Buffer> {
+  const zip = new JSZip();
+  zip.file("[Content_Types].xml", `<?xml version="1.0" encoding="UTF-8"?><Types xmlns="http://schemas.openxmlformats.org/package/2006/content-types"><Default Extension="xml" ContentType="application/xml"/></Types>`);
+  slides.forEach((paragrafos, i) => {
+    const corpo = paragrafos.map((p) => `<a:p><a:r><a:t>${p}</a:t></a:r></a:p>`).join("");
+    zip.file(
+      `ppt/slides/slide${i + 1}.xml`,
+      `<?xml version="1.0" encoding="UTF-8"?><p:sld xmlns:a="http://schemas.openxmlformats.org/drawingml/2006/main" xmlns:p="http://schemas.openxmlformats.org/presentationml/2006/main"><p:cSld><p:spTree><p:sp><p:txBody>${corpo}</p:txBody></p:sp></p:spTree></p:cSld></p:sld>`,
+    );
+  });
+  return zip.generateAsync({ type: "nodebuffer" });
+}
+
+test("PPTX: lê o texto de cada slide, na ordem numérica, com acentuação e entidades", async () => {
+  // slide10 vem antes de slide2 se a ordenação for por texto
+  const slides = Array.from({ length: 10 }, (_, i) => [`Slide número ${i + 1}`]);
+  slides[1] = ["Porta Vert &amp; Cia — espessura 40 mm", "Núcleo em lã de rocha &#233;"];
+  const texto = await textoDoArquivo("catalogo.pptx", await pptxCom(slides));
+  assert.match(texto, /\[Slide 2\]\nPorta Vert & Cia — espessura 40 mm\nNúcleo em lã de rocha é/);
+  assert.ok(texto.indexOf("[Slide 2]") < texto.indexOf("[Slide 10]"), "slide 2 vem antes do 10");
+});
+
+test("PPTX só com imagens (sem texto) dá erro claro", async () => {
+  const buffer = await pptxCom([[""]]);
+  await assert.rejects(
+    () => textoDoArquivo("icones.pptx", buffer),
+    (e: unknown) => e instanceof ErroDeArquivo && /não tem texto/.test(e.message),
+  );
+});
+
+test("PPTX corrompido e .ppt antigo dão erro claro", async () => {
+  await assert.rejects(
+    () => textoDoArquivo("x.pptx", Buffer.from("não é zip")),
+    (e: unknown) => e instanceof ErroDeArquivo && /corrompido/.test(e.message),
+  );
+  await assert.rejects(
+    () => textoDoArquivo("x.ppt", Buffer.from([0xd0, 0xcf, 0x11, 0xe0, 0, 0, 0, 0])),
+    (e: unknown) => e instanceof ErroDeArquivo && e.status === 415 && /\.pptx/.test(e.message),
+  );
+});

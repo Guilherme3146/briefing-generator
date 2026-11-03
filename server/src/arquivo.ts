@@ -27,6 +27,8 @@ export const TEMPO_MAXIMO_MS = Number(process.env.IMPORTAR_TEMPO_MAXIMO_MS ?? 60
 
 const NAO_LIDOS: Record<string, string> = {
   ".doc": "do Word antigo (.doc) — só o .docx é lido",
+  ".ppt": "do PowerPoint antigo (.ppt) — só o .pptx é lido",
+  ".ai": "do Illustrator sem compatibilidade com PDF — salve o .ai como PDF",
   ".rtf": "RTF",
   ".odt": "ODT",
   ".xlsx": "do Excel",
@@ -38,7 +40,7 @@ const NAO_LIDOS: Record<string, string> = {
   ".zip": "compactados",
 };
 
-const AJUDA = 'Abra o arquivo e salve como PDF, DOCX ou TXT, ou cole o texto no campo "Pedido do cliente".';
+const AJUDA = 'Abra o arquivo e salve como PDF, DOCX, PPTX ou TXT, ou cole o texto no campo "Pedido do cliente".';
 
 /** Reconhece pelo conteúdo o que a extensão não entrega (arquivo renomeado). */
 function tipoPeloConteudo(b: Buffer): string | null {
@@ -55,6 +57,7 @@ export async function textoDoArquivo(nome: string, buffer: Buffer): Promise<stri
   const ehPdf = buffer.subarray(0, 5).toString("latin1") === "%PDF-" || extensao === ".pdf";
   if (ehPdf) return lerPdf(buffer);
   if (extensao === ".docx") return lerDocx(buffer);
+  if (extensao === ".pptx") return lerPptx(buffer);
 
   const pelaExtensao = NAO_LIDOS[extensao];
   const pelaAssinatura = tipoPeloConteudo(buffer);
@@ -213,16 +216,55 @@ async function lerDocx(buffer: Buffer): Promise<string> {
  * tags ao redor somem — então espaço interno a uma run de texto sobrevive.
  */
 function textoDoXmlDocx(xml: string): string {
+  return textoDoXmlOffice(xml, "w");
+}
+
+/** Mesmo princípio para o PowerPoint, que usa o prefixo "a" (<a:p>, <a:br/>). */
+function textoDoXmlOffice(xml: string, prefixo: "w" | "a"): string {
   let s = xml;
-  s = s.replace(/<w:br\s*\/?>/g, "\n");
-  s = s.replace(/<w:tab\s*\/?>/g, "\t");
-  s = s.replace(/<\/w:p>/g, "\n");
+  s = s.replace(new RegExp(`<${prefixo}:br\\s*/?>`, "g"), "\n");
+  s = s.replace(new RegExp(`<${prefixo}:tab\\s*/?>`, "g"), "\t");
+  s = s.replace(new RegExp(`</${prefixo}:p>`, "g"), "\n");
   s = s.replace(/<[^>]+>/g, "");
   s = s
+    .replace(/&#x([0-9a-f]+);/gi, (_, h: string) => String.fromCodePoint(parseInt(h, 16)))
+    .replace(/&#(\d+);/g, (_, d: string) => String.fromCodePoint(Number(d)))
     .replace(/&lt;/g, "<")
     .replace(/&gt;/g, ">")
     .replace(/&quot;/g, '"')
     .replace(/&apos;/g, "'")
     .replace(/&amp;/g, "&");
   return s.replace(/\n{3,}/g, "\n\n").trim();
+}
+
+/** .pptx: um XML por slide em ppt/slides/slideN.xml; só o texto é lido (imagens e gráficos não). */
+async function lerPptx(buffer: Buffer): Promise<string> {
+  let zip: JSZip;
+  try {
+    zip = await JSZip.loadAsync(buffer);
+  } catch {
+    throw new ErroDeArquivo(
+      "O arquivo .pptx está corrompido ou não é um PowerPoint válido. Abra-o no PowerPoint para conferir.",
+    );
+  }
+
+  const slides = Object.keys(zip.files)
+    .map((nome) => ({ nome, n: Number(/^ppt\/slides\/slide(\d+)\.xml$/.exec(nome)?.[1]) }))
+    .filter((x) => Number.isFinite(x.n))
+    .sort((a, b) => a.n - b.n);
+  if (slides.length === 0) {
+    throw new ErroDeArquivo("Não encontrei slides dentro do .pptx. O arquivo pode estar corrompido ou protegido.");
+  }
+
+  const partes: string[] = [];
+  for (const { nome, n } of slides) {
+    const texto = textoDoXmlOffice(await zip.file(nome)!.async("string"), "a");
+    if (texto) partes.push(`[Slide ${n}]\n${texto}`);
+  }
+  if (partes.length === 0) {
+    throw new ErroDeArquivo(
+      "Este .pptx não tem texto (só imagens). O programa não lê imagem: descreva o que precisa no pedido ou na instrução da IA.",
+    );
+  }
+  return partes.join("\n\n");
 }

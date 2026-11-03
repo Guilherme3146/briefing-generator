@@ -64,6 +64,7 @@ export default function App() {
   const [origem, setOrigem] = useState<OrigemPedido>(
     () => (localStorage.getItem(CHAVE + "-origem") as OrigemPedido) || "mensagem",
   );
+  const [instrucao, setInstrucao] = useState(() => localStorage.getItem(CHAVE + "-instrucao") ?? "");
   const [aba, setAba] = useState<Aba>(() =>
     briefing.alteracoes.some(temConteudo) ? "alteracoes" : "pedido",
   );
@@ -101,7 +102,7 @@ export default function App() {
 
   const [importacao, setImportacao] = useState<Importacao | null>(null);
   const [importando, setImportando] = useState(false);
-  const [arquivoConversa, setArquivoConversa] = useState<File | null>(null);
+  const [arquivosConversa, setArquivosConversa] = useState<File[]>([]);
   const [promovidos, setPromovidos] = useState<Set<number>>(new Set());
   const [erroImportacao, setErroImportacao] = useState<string | null>(null);
 
@@ -168,10 +169,11 @@ export default function App() {
       localStorage.setItem(CHAVE, JSON.stringify(briefing));
       localStorage.setItem(CHAVE + "-pedido", pedido);
       localStorage.setItem(CHAVE + "-origem", origem);
+      localStorage.setItem(CHAVE + "-instrucao", instrucao);
     } catch {
       /* quota cheia: segue sem rascunho */
     }
-  }, [briefing, pedido, origem]);
+  }, [briefing, pedido, origem, instrucao]);
 
   const contagemPrints = useMemo(() => {
     const m: Record<number, number> = {};
@@ -326,15 +328,15 @@ export default function App() {
   }
 
   /** Lê uma conversa (PDF/TXT/VTT do Teams) por regras, sem IA. */
-  async function importar(arquivo: File, clientes?: string[]) {
+  async function importar(arquivos: File[], clientes?: string[]) {
     setImportando(true);
     setErroImportacao(null);
-    setArquivoConversa(arquivo); // guardado já agora: é ele que o "Tentar de novo" reenvia
+    setArquivosConversa(arquivos); // guardados já agora: são eles que o "Tentar de novo" reenvia
     const controle = new AbortController();
     const limite = window.setTimeout(() => controle.abort(), 90_000);
     try {
       const form = new FormData();
-      form.append("arquivo", arquivo);
+      for (const arquivo of arquivos) form.append("arquivo", arquivo);
       if (clientes) form.append("clientes", JSON.stringify(clientes));
       const r = await fetch("/api/importar", { method: "POST", body: form, signal: controle.signal });
 
@@ -363,18 +365,20 @@ export default function App() {
       setImportacao(data);
       setPromovidos(new Set());
       toast(
-        `${data.tarefas.length} ${data.tarefas.length === 1 ? "tarefa encontrada" : "tarefas encontradas"} em "${arquivo.name}"`,
+        `${data.tarefas.length} ${data.tarefas.length === 1 ? "tarefa encontrada" : "tarefas encontradas"} em ${arquivos.length === 1 ? `"${arquivos[0].name}"` : `${arquivos.length} arquivos`}`,
       );
-      // o texto normalizado é a base dos destaques: sem ele os trechos não se acham
-      if (
-        !clientes &&
-        (!pedido.trim() ||
-          (await confirmarAcao(
-            "Colocar o texto da conversa no campo \"Pedido do cliente\"? É ele que aparece ao lado das alterações, com os trechos destacados.",
-            { confirmar: "Colocar" },
-          )))
-      ) {
-        setPedido(data.texto);
+      // o texto normalizado é a base dos destaques: sem ele os trechos não se acham.
+      // Reprocessar (clientes) mantém o texto que já está no campo.
+      if (!clientes) {
+        if (!pedido.trim()) {
+          setPedido(data.texto);
+        } else {
+          const juntar = await confirmarAcao(
+            "Já existe texto em \"Pedido do cliente\". Juntar o texto dos arquivos abaixo dele, ou substituir tudo? Ele é o que aparece ao lado das alterações, com os trechos destacados.",
+            { confirmar: "Juntar", cancelar: "Substituir" },
+          );
+          setPedido(juntar ? `${pedido.trimEnd()}\n\n${data.texto}` : data.texto);
+        }
       }
     } catch (e) {
       if (e instanceof DOMException && e.name === "AbortError") {
@@ -440,10 +444,11 @@ export default function App() {
     if (!(await confirmarAcao("Apagar o rascunho e começar do zero?", { confirmar: "Apagar" }))) return;
     setImportacao(null);
     setErroImportacao(null);
-    setArquivoConversa(null);
+    setArquivosConversa([]);
     setPromovidos(new Set());
     setBriefing(VAZIO);
     setPedido("");
+    setInstrucao("");
     setPrints({});
     setIgnorados([]);
     setRevertidas([]);
@@ -479,7 +484,7 @@ export default function App() {
       const r = await fetch("/api/sugerir", {
         method: "POST",
         headers: { "Content-Type": "application/json", ...headersIA() },
-        body: JSON.stringify({ texto: pedido, origem }),
+        body: JSON.stringify({ texto: pedido, origem, instrucao }),
       });
       const data = (await r.json()) as RespostaSugestao & { erro?: string };
       if (!r.ok) {
@@ -848,11 +853,11 @@ export default function App() {
               importacao,
               importando,
               erro: erroImportacao,
-              arquivoNome: arquivoConversa?.name ?? null,
-              onTentarDeNovo: () => arquivoConversa && void importar(arquivoConversa),
+              arquivoNome: arquivosConversa.length ? arquivosConversa.map((f) => f.name).join(", ") : null,
+              onTentarDeNovo: () => arquivosConversa.length > 0 && void importar(arquivosConversa),
               promovidos,
-              onArquivo: (f) => void importar(f),
-              onReprocessar: (clientes) => arquivoConversa && void importar(arquivoConversa, clientes),
+              onArquivo: (fs) => void importar(fs),
+              onReprocessar: (clientes) => arquivosConversa.length > 0 && void importar(arquivosConversa, clientes),
               onAdicionar: adicionarTarefas,
               onPromover: promoverDescartado,
             }}
@@ -933,6 +938,8 @@ export default function App() {
           <AbaIA
             pedido={pedido}
             origem={origem}
+            instrucao={instrucao}
+            onInstrucao={setInstrucao}
             sugerindo={sugerindo}
             revisando={revisando}
             aRevisar={aRevisar}

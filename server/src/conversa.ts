@@ -670,3 +670,52 @@ export function extrair(bruto: string, opcoes: { clientes?: string[] } = {}): Re
     resumo: { turnos: turnos.length, frases: totalFrases, ruido },
   };
 }
+
+// ================================================================ vários arquivos
+
+/**
+ * Junta a leitura de vários arquivos (reunião + e-mail + WhatsApp...) numa só.
+ * Cada arquivo é lido SOZINHO (falantes e acordos não atravessam de um arquivo
+ * para outro); aqui só se concatena o texto, com um cabeçalho por arquivo, e se
+ * desloca as posições (`inicio`) para continuarem valendo no texto combinado.
+ */
+export function combinar(partes: { nome: string; resultado: Resultado }[]): Resultado {
+  if (partes.length === 1) return partes[0].resultado;
+
+  let texto = "";
+  const falantes = new Map<string, Falante>();
+  const tarefas: Tarefa[] = [];
+  const descartados: Descartado[] = [];
+  const alertas: string[] = [];
+  const resumo = { turnos: 0, frases: 0, ruido: 0 };
+
+  for (const { nome, resultado: r } of partes) {
+    const cabecalho = `=== Arquivo: ${nome} ===\n`;
+    const base = texto.length + cabecalho.length;
+    texto += cabecalho + r.texto.trimEnd() + "\n\n";
+
+    for (const t of r.tarefas) {
+      tarefas.push({ ...t, fontes: t.fontes.map((f) => ({ ...f, inicio: f.inicio + base })) });
+    }
+    for (const d of r.descartados) descartados.push({ ...d, inicio: d.inicio + base });
+    for (const a of r.alertas) alertas.push(`[${nome}] ${a}`);
+    for (const f of r.falantes) {
+      const atual = falantes.get(f.nome);
+      if (atual) falantes.set(f.nome, { ...atual, turnos: atual.turnos + f.turnos, palavras: atual.palavras + f.palavras });
+      else falantes.set(f.nome, { ...f });
+    }
+    resumo.turnos += r.resumo.turnos;
+    resumo.frases += r.resumo.frases;
+    resumo.ruido += r.resumo.ruido;
+  }
+
+  return {
+    texto,
+    formato: partes[0].resultado.formato,
+    falantes: [...falantes.values()],
+    tarefas,
+    descartados,
+    alertas,
+    resumo,
+  };
+}

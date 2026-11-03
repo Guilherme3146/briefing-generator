@@ -17,7 +17,7 @@ type Props = {
     arquivoNome: string | null;
     onTentarDeNovo: () => void;
     promovidos: Set<number>;
-    onArquivo: (arquivo: File) => void;
+    onArquivo: (arquivos: File[]) => void;
     onReprocessar: (clientes: string[]) => void;
     onAdicionar: (indices: number[]) => void;
     onPromover: (d: DescartadoConversa) => void;

@@ -4,6 +4,8 @@ import type { ModoIA, OrigemPedido, ProvedorIA, Uso } from "./types";
 type Props = {
   pedido: string;
   origem: OrigemPedido;
+  instrucao: string;
+  onInstrucao: (v: string) => void;
   sugerindo: boolean;
   revisando: boolean;
   aRevisar: number;
@@ -90,6 +92,23 @@ export default function AbaIA(p: Props) {
               : "O que o cliente escreveu entre aspas pode ir direto para o site."}
           </small>
         </div>
+
+        <label className="campo">
+          <span className="rotulo">
+            O que a IA deve fazer <em>opcional</em>
+          </span>
+          <textarea
+            rows={3}
+            maxLength={2000}
+            value={p.instrucao}
+            onChange={(e) => p.onInstrucao(e.target.value)}
+            placeholder="Ex.: pegue as medidas de cada arquivo e monte uma alteração por produto, na ordem dos slides."
+          />
+          <small>
+            Deixe em branco para a leitura padrão. A orientação ajuda a decidir o que extrair e como agrupar,
+            mas não troca as regras: a IA continua só sugerindo e você confirma cada alteração.
+          </small>
+        </label>
 
         {temPedido ? (
           <div className="previa-pedido">

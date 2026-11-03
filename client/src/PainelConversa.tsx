@@ -14,7 +14,7 @@ type Props = {
   arquivoNome: string | null;
   onTentarDeNovo: () => void;
   promovidos: Set<number>;
-  onArquivo: (arquivo: File) => void;
+  onArquivo: (arquivos: File[]) => void;
   onReprocessar: (clientes: string[]) => void;
   onAdicionar: (indices: number[]) => void;
   onPromover: (d: DescartadoConversa) => void;
@@ -34,7 +34,8 @@ export default function PainelConversa(p: Props) {
       <header className="painel-topo">
         <h2>Importar uma conversa</h2>
         <p>
-          Envie a transcrição da reunião (PDF, DOCX, TXT ou VTT). O programa lê por regras, sem IA:
+          Envie a transcrição da reunião, e-mails, conversas de WhatsApp ou catálogos (PDF, DOCX,
+          PPTX, TXT ou VTT) — pode escolher vários de uma vez. O programa lê por regras, sem IA:
           separa quem falou, separa o que parece pedido do que é conversa e deixa as tarefas para
           você conferir.
         </p>
@@ -43,19 +44,20 @@ export default function PainelConversa(p: Props) {
       <label className="anexar">
         <input
           type="file"
-          accept=".pdf,.docx,.txt,.vtt,application/pdf,application/vnd.openxmlformats-officedocument.wordprocessingml.document,text/plain,text/vtt"
+          multiple
+          accept=".pdf,.docx,.pptx,.ai,.txt,.vtt,application/pdf,application/vnd.openxmlformats-officedocument.wordprocessingml.document,application/vnd.openxmlformats-officedocument.presentationml.presentation,text/plain,text/vtt"
           onChange={(e) => {
-            const f = e.target.files?.[0];
+            const fs = Array.from(e.target.files ?? []);
             e.target.value = "";
-            if (f) p.onArquivo(f);
+            if (fs.length) p.onArquivo(fs.slice(0, 10));
           }}
         />
         <span>
           {p.importando
-            ? `Lendo ${p.arquivoNome ?? "o arquivo"}…`
+            ? `Lendo ${p.arquivoNome ?? "os arquivos"}…`
             : p.importacao
-              ? "Trocar o arquivo"
-              : "+ Escolher o arquivo da conversa"}
+              ? "Trocar os arquivos"
+              : "+ Escolher os arquivos (um ou vários)"}
         </span>
       </label>
 

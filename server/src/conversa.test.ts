@@ -1,6 +1,6 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { dividirFrases, extrair, lerTurnos } from "./conversa.js";
+import { combinar, dividirFrases, extrair, lerTurnos } from "./conversa.js";
 
 /**
  * Nada aqui chama IA nem rede: o motor é só regra. A conversa é inventada, no
@@ -299,4 +299,35 @@ test("entrada vazia não quebra", () => {
   const r = extrair("   ");
   assert.equal(r.tarefas.length, 0);
   assert.equal(r.falantes.length, 0);
+});
+
+test("combinar: vários arquivos viram um texto só, com as posições deslocadas certo", () => {
+  const reuniao = `Ana Souza 0:04
+Bom dia.
+
+Carlos Lima 0:20
+Precisa trocar o telefone da empresa no site.
+`;
+  const email = "Olá, gostaria de remover os vídeos antigos da home.";
+  const a = extrair(reuniao, { clientes: ["Carlos Lima"] });
+  const b = extrair(email);
+  const r = combinar([
+    { nome: "reuniao.txt", resultado: a },
+    { nome: "email.txt", resultado: b },
+  ]);
+  assert.match(r.texto, /=== Arquivo: reuniao.txt ===/);
+  assert.match(r.texto, /=== Arquivo: email.txt ===/);
+  assert.ok(r.tarefas.length >= 2, "tarefas dos dois arquivos");
+  // o trecho de cada fonte tem que estar exatamente na posição apontada, no texto combinado
+  for (const t of r.tarefas) {
+    for (const f of t.fontes) {
+      assert.equal(r.texto.slice(f.inicio, f.inicio + f.trecho.length), f.trecho);
+    }
+  }
+  assert.equal(r.resumo.turnos, a.resumo.turnos + b.resumo.turnos);
+});
+
+test("combinar: com um arquivo só devolve a leitura dele, sem cabeçalho", () => {
+  const a = extrair("Preciso trocar o logo da home.");
+  assert.equal(combinar([{ nome: "x.txt", resultado: a }]), a);
 });

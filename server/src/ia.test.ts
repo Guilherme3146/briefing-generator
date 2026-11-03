@@ -1,6 +1,6 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { paraAlteracoes, sugerir, PROMPT_SISTEMA, PROMPT_REUNIAO, MAX_CARACTERES } from "./ia.js";
+import { comInstrucao, paraAlteracoes, sugerir, PROMPT_SISTEMA, PROMPT_REUNIAO, MAX_CARACTERES } from "./ia.js";
 import {
   ChaveNecessariaError,
   gerarEstruturado,
@@ -452,4 +452,19 @@ test("modo 'proprio': chave recusada pelo provedor vira ChaveNecessariaError, n�
   } finally {
     globalThis.fetch = original;
   }
+});
+
+test("instrução opcional: vazia não muda nada; preenchida vai depois do texto, avisando que não troca as regras", () => {
+  assert.equal(comInstrucao("texto do cliente", ""), "texto do cliente");
+  assert.equal(comInstrucao("texto do cliente", "   "), "texto do cliente");
+  const r = comInstrucao("texto do cliente", "uma alteração por produto");
+  assert.ok(r.startsWith("texto do cliente"));
+  assert.match(r, /ORIENTAÇÃO DA ANALISTA/);
+  assert.match(r, /NÃO substitui as regras/);
+  assert.ok(r.endsWith("uma alteração por produto"));
+});
+
+test("instrução opcional é cortada no limite", () => {
+  const r = comInstrucao("t", "x".repeat(5000));
+  assert.ok(r.length < 2500);
 });

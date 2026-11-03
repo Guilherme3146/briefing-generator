@@ -29,7 +29,7 @@ import { sugerir, MAX_CARACTERES } from "./ia.js";
 import { revisar } from "./revisor.js";
 import { montarPerguntas } from "./perguntas.js";
 import { OrigemPedidoSchema, ULTIMA_LINHA_DADOS, VereditoSchema } from "./schema.js";
-import { extrair } from "./conversa.js";
+import { combinar, extrair, type Resultado } from "./conversa.js";
 import { ErroDeArquivo, textoDoArquivo } from "./arquivo.js";
 import { manipuladorDeErros, rotaApiDesconhecida } from "./erros.js";
 
@@ -108,6 +108,7 @@ app.post("/api/sugerir", async (req, res) => {
       texto,
       origem.success ? origem.data : "mensagem",
       chaveClienteDoRequest(req),
+      typeof req.body?.instrucao === "string" ? req.body.instrucao : "",
     );
     console.log(
       `[sugerir:${r.origem}] ${r.alteracoes.length} alterações` +
@@ -129,41 +130,58 @@ app.post("/api/sugerir", async (req, res) => {
 });
 
 /**
- * Importa uma conversa (PDF/DOCX/TXT/VTT do Teams) e a le POR REGRA, sem IA: devolve
- * as tarefas que parecem pedidos, o que ficou de fora e por que, e de onde cada
- * tarefa saiu. Funciona com ou sem chave de IA.
+ * Importa uma ou mais fontes (PDF/DOCX/PPTX/TXT/VTT: reunião, e-mail, WhatsApp,
+ * catálogo...) e as le POR REGRA, sem IA: devolve as tarefas que parecem pedidos,
+ * o que ficou de fora e por que, e de onde cada tarefa saiu. Cada arquivo e lido
+ * sozinho e o resultado e combinado; um arquivo ruim nao derruba os outros.
+ * Funciona com ou sem chave de IA.
  */
-app.post("/api/importar", upload.single("arquivo"), async (req, res) => {
+app.post("/api/importar", upload.array("arquivo", 10), async (req, res) => {
+  const arquivos = (req.files as Express.Multer.File[] | undefined) ?? [];
+  if (arquivos.length === 0) return res.status(400).json({ erro: "Envie o arquivo no campo 'arquivo'." });
+
+  let clientes: string[] | undefined;
   try {
-    const arquivo = req.file;
-    if (!arquivo) return res.status(400).json({ erro: "Envie o arquivo no campo 'arquivo'." });
+    const bruto = typeof req.body?.clientes === "string" ? JSON.parse(req.body.clientes) : null;
+    if (Array.isArray(bruto)) clientes = bruto.filter((x): x is string => typeof x === "string");
+  } catch {
+    /* campo malformado: segue com o palpite automático */
+  }
 
-    let clientes: string[] | undefined;
-    try {
-      const bruto = typeof req.body?.clientes === "string" ? JSON.parse(req.body.clientes) : null;
-      if (Array.isArray(bruto)) clientes = bruto.filter((x): x is string => typeof x === "string");
-    } catch {
-      /* campo malformado: segue com o palpite automático */
-    }
+  const lidos: { nome: string; resultado: Resultado }[] = [];
+  const falhas: { nome: string; erro: string; status: number }[] = [];
 
+  for (const arquivo of arquivos) {
     // o multer entrega o nome em latin1: "Reunião.pdf" chegaria como "ReuniÃ£o.pdf"
     const nome = nomeDoUpload(arquivo.originalname);
-    const texto = await textoDoArquivo(nome, arquivo.buffer);
-    if (!texto.trim()) {
-      return res.status(422).json({ erro: "O arquivo está vazio: não achei nenhum texto nele." });
+    try {
+      const texto = await textoDoArquivo(nome, arquivo.buffer);
+      if (!texto.trim()) throw new ErroDeArquivo("O arquivo está vazio: não achei nenhum texto nele.");
+      const resultado = extrair(texto, { clientes });
+      console.log(
+        `[importar] ${nome} | ${resultado.formato} | ${resultado.resumo.turnos} falas, ` +
+          `${resultado.tarefas.length} tarefas, ${resultado.descartados.length} descartados`,
+      );
+      lidos.push({ nome, resultado });
+    } catch (e) {
+      if (e instanceof ErroDeArquivo) {
+        falhas.push({ nome, erro: e.message, status: e.status });
+      } else {
+        const msg = e instanceof Error ? e.message : String(e);
+        console.error("[importar]", e instanceof Error ? (e.stack ?? msg) : msg);
+        falhas.push({ nome, erro: `Não consegui ler o arquivo: ${msg}`, status: 422 });
+      }
     }
-    const resultado = extrair(texto, { clientes });
-    console.log(
-      `[importar] ${nome} | ${resultado.formato} | ${resultado.resumo.turnos} falas, ` +
-        `${resultado.tarefas.length} tarefas, ${resultado.descartados.length} descartados`,
-    );
-    res.json({ arquivo: nome, ...resultado });
-  } catch (e) {
-    if (e instanceof ErroDeArquivo) return res.status(e.status).json({ erro: e.message });
-    const msg = e instanceof Error ? e.message : String(e);
-    console.error("[importar]", e instanceof Error ? (e.stack ?? msg) : msg);
-    res.status(422).json({ erro: `Não consegui ler o arquivo: ${msg}` });
   }
+
+  if (lidos.length === 0) {
+    if (falhas.length === 1) return res.status(falhas[0].status).json({ erro: falhas[0].erro });
+    return res.status(422).json({ erro: falhas.map((f) => `${f.nome}: ${f.erro}`).join("\n") });
+  }
+
+  const combinado = combinar(lidos);
+  combinado.alertas.unshift(...falhas.map((f) => `Não consegui ler "${f.nome}": ${f.erro}`));
+  res.json({ arquivo: lidos.map((l) => l.nome).join(", "), arquivos: lidos.map((l) => l.nome), ...combinado });
 });
 
 /**
