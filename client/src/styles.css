@@ -508,3 +508,6 @@ textarea.grande { min-height: 260px; }
 .esforco select { padding: 8px 10px; border: 2px solid var(--borda, #c9d3e6); border-radius: 8px; font: inherit; background: #fff; }
 .esforco small { color: #5b6b8c; }
 .esforco-resumo .painel-topo h2 em { font-style: normal; font-weight: 600; font-size: .85rem; color: #5b6b8c; }
+.opcao-horas span:last-child { display: flex; align-items: center; gap: 8px; font-weight: 600; padding-top: 8px; }
+.opcao-horas input[type=checkbox] { width: auto; flex: 0 0 auto; margin: 0; box-shadow: none; }
+.opcao-horas span:last-child { justify-content: flex-start; }
