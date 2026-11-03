@@ -5,7 +5,6 @@ import AbaIA from "./AbaIA";
 import AbaPedido from "./AbaPedido";
 import AbaPlanilha from "./AbaPlanilha";
 import { useToast } from "./Toast";
-import { montarBriefingHtml, nomeDoHtml } from "./briefingHtml";
 import {
   contarAvisos,
   contarPendencias,
@@ -74,7 +73,6 @@ export default function App() {
 
   const [prints, setPrints] = useState<Record<number, File[]>>({});
   const [achados, setAchados] = useState<Achado[]>([]);
-  const [gerandoHtml, setGerandoHtml] = useState(false);
   const [estimativas, setEstimativas] = useState<Record<number, Estimativa>>({});
   const [gerando, setGerando] = useState(false);
   const [sugerindo, setSugerindo] = useState(false);
@@ -694,41 +692,6 @@ export default function App() {
     URL.revokeObjectURL(url);
   }
 
-  async function gerarHtml(rodada: number, comHoras: boolean) {
-    setGerandoHtml(true);
-    try {
-      const lerComoUrl = (f: File) =>
-        new Promise<string>((ok, falha) => {
-          const r = new FileReader();
-          r.onload = () => ok(String(r.result));
-          r.onerror = () => falha(r.error);
-          r.readAsDataURL(f);
-        });
-      const embutidos: Record<number, string[]> = {};
-      for (const [ordem, arquivos] of Object.entries(prints)) {
-        embutidos[Number(ordem)] = await Promise.all(arquivos.map(lerComoUrl));
-      }
-      const agora = new Date();
-      const html = montarBriefingHtml({
-        cliente: briefing.cliente,
-        urlBase: briefing.url_base,
-        alteracoes: briefing.alteracoes,
-        prints: embutidos,
-        estimativas,
-        rodada,
-        comHoras,
-        geradoEm: agora,
-      });
-      const nome = nomeDoHtml(briefing.cliente, rodada, agora);
-      baixar(new Blob([html], { type: "text/html;charset=utf-8" }), nome);
-      toast(`Briefing para leitura gerado: ${nome}`);
-    } catch (e) {
-      toast(e instanceof Error ? e.message : "Não consegui montar o briefing para leitura.", "erro");
-    } finally {
-      setGerandoHtml(false);
-    }
-  }
-
   async function exportar() {
     setGerando(true);
     setErro(null);
@@ -1008,8 +971,6 @@ export default function App() {
             onDescartar={descartarPlanilha}
             onReconferir={() => planilha && void inspecionar(planilha)}
             onGerar={exportar}
-            onGerarHtml={(r, h) => void gerarHtml(r, h)}
-            gerandoHtml={gerandoHtml}
             onIrParaProblema={irParaPrimeiroProblema}
           />
         )}

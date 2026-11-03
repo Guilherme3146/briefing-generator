@@ -1,4 +1,3 @@
-import { useState } from "react";
 import type { Inspecao } from "./types";
 
 type Props = {
@@ -17,15 +16,11 @@ type Props = {
   onDescartar: () => void;
   onReconferir: () => void;
   onGerar: () => void;
-  onGerarHtml: (rodada: number, comHoras: boolean) => void;
-  gerandoHtml: boolean;
   onIrParaProblema: () => void;
 };
 
 export default function AbaPlanilha(p: Props) {
   const acrescentando = Boolean(p.planilha);
-  const [rodada, setRodada] = useState(1);
-  const [comHoras, setComHoras] = useState(false);
 
   return (
     <div className="pagina estreita">
@@ -150,44 +145,6 @@ export default function AbaPlanilha(p: Props) {
             </button>
           </div>
         )}
-      </section>
-
-      <section className="painel">
-        <header className="painel-topo">
-          <h2>Briefing para leitura</h2>
-          <p>
-            Um arquivo .html único, bonito de ler e que não se edita: é uma foto datada do briefing para
-            mandar ao cliente ou à produção. Se entrar alteração depois, gere outra rodada.
-          </p>
-        </header>
-        <div className="dupla">
-          <label className="campo">
-            <span className="rotulo">Rodada</span>
-            <input
-              type="number"
-              min={1}
-              max={99}
-              value={rodada}
-              onChange={(e) => setRodada(Math.max(1, Math.min(99, Number(e.target.value) || 1)))}
-            />
-          </label>
-          <label className="campo opcao-horas">
-            <span className="rotulo">Horas estimadas</span>
-            <span>
-              <input type="checkbox" checked={comHoras} onChange={(e) => setComHoras(e.target.checked)} /> Incluir
-              (como estimativa, não prazo)
-            </span>
-          </label>
-        </div>
-        <div className="acoes">
-          <button
-            className="secundario"
-            onClick={() => p.onGerarHtml(rodada, comHoras)}
-            disabled={p.bloqueado || p.gerandoHtml || p.quantidade === 0}
-          >
-            {p.gerandoHtml ? "Montando…" : "Baixar briefing legível (.html)"}
-          </button>
-        </div>
       </section>
 
       <div className="acao-final">
