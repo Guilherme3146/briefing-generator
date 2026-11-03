@@ -252,11 +252,8 @@ export default function App() {
   );
 
   function confirmarTodas() {
-    let qtd = 0;
-    setBriefing((b) => {
-      qtd = b.alteracoes.filter((a) => !a.confirmado).length;
-      return { ...b, alteracoes: b.alteracoes.map((a) => ({ ...a, confirmado: true })) };
-    });
+    const qtd = briefing.alteracoes.filter((a) => !a.confirmado).length;
+    setBriefing((b) => ({ ...b, alteracoes: b.alteracoes.map((a) => ({ ...a, confirmado: true })) }));
     toast(`${qtd} ${qtd === 1 ? "alteração confirmada" : "alterações confirmadas"}`);
   }
 
