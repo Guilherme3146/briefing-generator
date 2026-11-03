@@ -335,33 +335,71 @@ export default function App() {
     const controle = new AbortController();
     const limite = window.setTimeout(() => controle.abort(), 90_000);
     try {
-      const form = new FormData();
-      for (const arquivo of arquivos) form.append("arquivo", arquivo);
-      if (clientes) form.append("clientes", JSON.stringify(clientes));
-      const r = await fetch("/api/importar", { method: "POST", body: form, signal: controle.signal });
+      const ehImportacao = (d: Importacao | null): d is Importacao =>
+        !!d && typeof d.texto === "string" && Array.isArray(d.tarefas) && Array.isArray(d.descartados) && Array.isArray(d.falantes);
 
-      // a API responde JSON até no erro; se não responder, o servidor é antigo ou está fora do ar
-      const corpo = await r.text();
-      let data: (Importacao & { erro?: string }) | null = null;
-      try {
-        data = JSON.parse(corpo);
-      } catch {
-        data = null;
+      // um arquivo por requisição: a hospedagem limita o corpo de cada uma a ~4,5 MB, e assim
+      // um arquivo ruim não derruba os outros
+      const lidos: { nome: string; resultado: Importacao }[] = [];
+      const falhas: string[] = [];
+      for (const arquivo of arquivos) {
+        const form = new FormData();
+        form.append("arquivo", arquivo);
+        if (clientes) form.append("clientes", JSON.stringify(clientes));
+        const r = await fetch("/api/importar", { method: "POST", body: form, signal: controle.signal });
+
+        // a API responde JSON até no erro; se não responder, o servidor é antigo ou está fora do ar
+        const corpo = await r.text();
+        let resp: (Importacao & { erro?: string }) | null = null;
+        try {
+          resp = JSON.parse(corpo);
+        } catch {
+          resp = null;
+        }
+        if (!r.ok || !resp) {
+          if (r.status === 404 || r.status >= 500) void verificarApi();
+          const msg =
+            resp?.erro ??
+            (r.status === 413
+              ? "o arquivo passa do limite de 4 MB desta hospedagem. Salve uma versão menor ou cole o texto."
+              : explicarFalhaDaApi(r.status, corpo));
+          falhas.push(`${arquivo.name}: ${msg}`);
+          continue;
+        }
+        if (!ehImportacao(resp)) {
+          falhas.push(`${arquivo.name}: a resposta do servidor veio incompleta. Reinicie o servidor (npm run dev) e tente de novo.`);
+          continue;
+        }
+        lidos.push({ nome: arquivo.name, resultado: resp });
       }
-      if (!r.ok || !data) {
-        setErroImportacao(data?.erro ?? explicarFalhaDaApi(r.status, corpo));
-        if (r.status === 404 || r.status >= 500) void verificarApi();
+
+      if (lidos.length === 0) {
+        setErroImportacao(falhas.join("\n"));
         return;
       }
-      if (
-        typeof data.texto !== "string" ||
-        !Array.isArray(data.tarefas) ||
-        !Array.isArray(data.descartados) ||
-        !Array.isArray(data.falantes)
-      ) {
-        setErroImportacao("A resposta do servidor veio incompleta. Reinicie o servidor (npm run dev) e tente de novo.");
-        return;
+
+      let data: Importacao = lidos[0].resultado;
+      if (lidos.length > 1) {
+        const r = await fetch("/api/combinar", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ partes: lidos }),
+          signal: controle.signal,
+        });
+        const corpo = await r.text();
+        let comb: (Importacao & { erro?: string }) | null = null;
+        try {
+          comb = JSON.parse(corpo);
+        } catch {
+          comb = null;
+        }
+        if (!r.ok || !ehImportacao(comb)) {
+          setErroImportacao(comb?.erro ?? explicarFalhaDaApi(r.status, corpo));
+          return;
+        }
+        data = comb;
       }
+      if (falhas.length) data = { ...data, alertas: [...falhas.map((f) => `Não consegui ler ${f}`), ...data.alertas] };
       setImportacao(data);
       setPromovidos(new Set());
       toast(

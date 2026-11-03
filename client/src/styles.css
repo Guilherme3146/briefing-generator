@@ -502,3 +502,4 @@ textarea.grande { min-height: 260px; }
 .toast-confirmar { background: var(--coral-escuro); color: #fff; }
 .toast-confirmar:hover { opacity: .9; }
 .rodape-creditos { margin-top: 6px; color: #8fa0c2; font-size: .78rem; font-weight: 600; }
+.erro-importacao span { white-space: pre-line; }

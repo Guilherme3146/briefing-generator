@@ -185,6 +185,27 @@ app.post("/api/importar", upload.array("arquivo", 10), async (req, res) => {
 });
 
 /**
+ * Junta leituras ja feitas (uma por /api/importar). O navegador manda um arquivo por
+ * requisicao porque a hospedagem limita o corpo a ~4,5 MB; aqui so chega texto.
+ */
+app.post("/api/combinar", (req, res) => {
+  const partes: unknown = req.body?.partes;
+  const valida = (p: any): p is { nome: string; resultado: Resultado } =>
+    typeof p?.nome === "string" &&
+    typeof p?.resultado?.texto === "string" &&
+    Array.isArray(p.resultado.tarefas) &&
+    Array.isArray(p.resultado.descartados) &&
+    Array.isArray(p.resultado.falantes) &&
+    Array.isArray(p.resultado.alertas) &&
+    typeof p.resultado.resumo === "object";
+  if (!Array.isArray(partes) || partes.length === 0 || partes.length > 10 || !partes.every(valida)) {
+    return res.status(400).json({ erro: "Envie de 1 a 10 leituras para combinar." });
+  }
+  const combinado = combinar(partes);
+  res.json({ arquivo: partes.map((p) => p.nome).join(", "), arquivos: partes.map((p) => p.nome), ...combinado });
+});
+
+/**
  * Fase 3 — revisor semantico.
  *
  * Acao EXPLICITA, nunca no debounce: /api/revisar roda a cada 400ms e chamar a
