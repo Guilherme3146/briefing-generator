@@ -26,6 +26,7 @@ import {
   type ChaveCliente,
 } from "./anthropic.js";
 import { sugerir, MAX_CARACTERES } from "./ia.js";
+import { extensaoDaImagem } from "./imagem.js";
 import { revisar } from "./revisor.js";
 import { montarPerguntas } from "./perguntas.js";
 import { OrigemPedidoSchema, ULTIMA_LINHA_DADOS, VereditoSchema } from "./schema.js";
@@ -41,19 +42,13 @@ const PORTA = Number(process.env.PORT ?? 3001);
 
 const app = express();
 app.use(cors());
-app.use(express.json({ limit: "2mb" }));
+app.use(express.json({ limit: "5mb" }));
 
 const upload = multer({
   storage: multer.memoryStorage(),
   limits: { fileSize: 8 * 1024 * 1024, files: 100 },
 });
 
-const EXTENSOES: Record<string, Print["extensao"]> = {
-  "image/png": "png",
-  "image/jpeg": "jpeg",
-  "image/jpg": "jpeg",
-  "image/gif": "gif",
-};
 
 app.get("/api/health", (_req, res) => {
   const modo = modoIA();
@@ -309,7 +304,7 @@ app.post("/api/gerar", upload.any(), async (req, res) => {
   } catch (e) {
     const msg = e instanceof Error ? e.message : String(e);
     console.error("[gerar]", msg);
-    res.status(500).json({ erro: msg });
+    res.status(e instanceof ErroDeArquivo ? e.status : 500).json({ erro: msg });
   }
 });
 
@@ -415,8 +410,16 @@ function printsDoRequest(arquivos: Express.Multer.File[]): Print[] {
   const prints: Print[] = [];
   for (const f of arquivos) {
     const m = /^print_(\d+)$/.exec(f.fieldname);
-    const extensao = EXTENSOES[f.mimetype];
-    if (!m || !extensao) continue;
+    if (!m) continue;
+    // o formato vem do CONTEÚDO: o tipo que o navegador informa falha (vazio, .jfif...) e
+    // antes o print era descartado em silêncio, sem nenhum aviso
+    const extensao = extensaoDaImagem(f.buffer);
+    if (!extensao) {
+      throw new ErroDeArquivo(
+        `O print "${nomeDoUpload(f.originalname)}" (alteração ${m[1]}) não é PNG, JPG ou GIF — por isso não entra na planilha. ` +
+          "Salve a imagem como PNG ou JPG e anexe de novo.",
+      );
+    }
     prints.push({ ordem: Number(m[1]), buffer: f.buffer, extensao });
   }
   return prints;

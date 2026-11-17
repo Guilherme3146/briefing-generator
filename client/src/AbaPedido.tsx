@@ -1,14 +1,16 @@
 import PainelConversa from "./PainelConversa";
+import PainelIA from "./PainelIA";
+import type { ComponentProps } from "react";
 import type { Briefing, DescartadoConversa, Importacao } from "./types";
 
 type Props = {
   briefing: Briefing;
   pedido: string;
-  iaAtiva: boolean;
+  /** props do painel de IA; ausente = sem chave no servidor, nada aparece */
+  ia: Omit<ComponentProps<typeof PainelIA>, "pedido"> | null;
   onBriefing: (b: Briefing) => void;
   onPedido: (texto: string) => void;
   onComecar: () => void;
-  onIrParaIA: () => void;
   onLimpar: () => void;
   conversa: {
     importacao: Importacao | null;
@@ -27,11 +29,10 @@ type Props = {
 export default function AbaPedido({
   briefing,
   pedido,
-  iaAtiva,
+  ia,
   onBriefing,
   onPedido,
   onComecar,
-  onIrParaIA,
   onLimpar,
   conversa,
 }: Props) {
@@ -90,13 +91,10 @@ export default function AbaPedido({
           <button className="primario" onClick={onComecar}>
             Preencher as alterações →
           </button>
-          {iaAtiva && (
-            <button className="ia-botao" onClick={onIrParaIA} disabled={!pedido.trim()}>
-              Deixar a IA separar em alterações
-            </button>
-          )}
         </div>
       </section>
+
+      {ia && <PainelIA {...ia} pedido={pedido} />}
 
       <p className="rodape-aba">
         O rascunho fica salvo neste navegador.{" "}

@@ -277,7 +277,14 @@ type RespostaGemini = {
 };
 
 /** 503 = "alta demanda", passageiro. Tenta de novo antes de incomodar o analista. */
+/** minimal | low | medium | high; vazio (GEMINI_RACIOCINIO=) usa o padrão do Google, que é mais lento */
+const RACIOCINIO_GEMINI = process.env.GEMINI_RACIOCINIO ?? "low";
 const TENTATIVAS_GEMINI = 3;
+/** usados, na ordem, quando o modelo principal segue em 503. Troque com GEMINI_MODELO_RESERVA=a,b */
+const MODELOS_RESERVA_GEMINI = (process.env.GEMINI_MODELO_RESERVA ?? "gemini-flash-lite-latest")
+  .split(",")
+  .map((m) => m.trim())
+  .filter(Boolean);
 const ESPERA_GEMINI_MS = Number(process.env.GEMINI_ESPERA_MS ?? 3000);
 
 /**
@@ -305,22 +312,46 @@ async function viaGemini<T>(
         responseJsonSchema: schemaParaGemini(p.schema),
         maxOutputTokens: p.maxTokens,
         temperature: 0.2,
+        // menos "raciocínio" interno = resposta bem mais rápida; para separar alterações basta o nível baixo
+        ...(RACIOCINIO_GEMINI ? { thinkingConfig: { thinkingLevel: RACIOCINIO_GEMINI } } : {}),
       },
     }),
   };
   const url = `${GEMINI_URL}/${encodeURIComponent(modelo)}:generateContent`;
 
   let r = await fetch(url, pedido);
+  if (r.status === 400 && RACIOCINIO_GEMINI) {
+    // modelo que não aceita o nível de raciocínio: repete sem ele em vez de falhar
+    const corpoTeste = await r.clone().text();
+    if (/thinking/i.test(corpoTeste)) {
+      const sem = JSON.parse(String(pedido.body));
+      delete sem.generationConfig.thinkingConfig;
+      pedido.body = JSON.stringify(sem);
+      r = await fetch(url, pedido);
+    }
+  }
   for (let i = 1; r.status === 503 && i < TENTATIVAS_GEMINI; i++) {
     await new Promise((ok) => setTimeout(ok, ESPERA_GEMINI_MS * i));
     r = await fetch(url, pedido);
+  }
+  // modelo principal continua sobrecarregado: cada modelo tem a própria fila, então o reserva costuma responder
+  if (r.status === 503 && !chaveDoVisitante) {
+    for (const reserva of MODELOS_RESERVA_GEMINI) {
+      if (reserva === modelo) continue;
+      const rr = await fetch(`${GEMINI_URL}/${encodeURIComponent(reserva)}:generateContent`, pedido);
+      if (rr.status !== 503) {
+        console.warn(`[ia] ${modelo} sobrecarregado; usando ${reserva}`);
+        r = rr;
+        break;
+      }
+    }
   }
 
   const corpo = (await r.json().catch(() => ({}))) as RespostaGemini;
 
   if (!r.ok) {
     if (r.status === 503) {
-      throw new Error("O Gemini está sobrecarregado agora. Tente de novo em instantes.");
+      throw new Error("O Gemini está sobrecarregado agora (o modelo reserva também). Tente de novo em instantes.");
     }
     if (r.status === 429) {
       // a faixa gratuita tem limite por minuto (passa logo) e por DIA (só volta

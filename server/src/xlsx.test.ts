@@ -44,7 +44,7 @@ async function gerarEAbrir() {
   return wb;
 }
 
-test("preserva as 5 abas do template", async () => {
+test("preserva as 5 abas do template e acrescenta as abas Briefing e Planner no fim", async () => {
   const wb = await gerarEAbrir();
   assert.deepEqual(wb.worksheets.map((w) => w.name), [
     "Site",
@@ -52,6 +52,8 @@ test("preserva as 5 abas do template", async () => {
     "Complemento de Mockup",
     "Prints",
     "FAQ",
+    "Briefing",
+    "Planner",
   ]);
 });
 
@@ -132,3 +134,4 @@ test("nome do arquivo sai sem acento e com a data", () => {
   const nome = nomeDoArquivo("Amorim Letreiros & Cia", new Date("2026-10-02T12:00:00Z"));
   assert.equal(nome, "amorim-letreiros-cia-alteracao-2026-10-02.xlsx");
 });
+

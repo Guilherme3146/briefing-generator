@@ -124,6 +124,8 @@ test("preserva abas, fórmula de progresso e os prints do template", async () =>
     "Complemento de Mockup",
     "Prints",
     "FAQ",
+    "Briefing",
+    "Planner",
   ]);
   const a1: any = abaAlteracao(wb).getCell("A1").value;
   assert.ok(a1?.formula, "a fórmula de progresso tem que sobreviver");

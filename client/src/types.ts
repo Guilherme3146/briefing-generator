@@ -202,7 +202,7 @@ export function temConteudo(a: Alteracao): boolean {
   return Boolean(a.solicitacao.trim() || a.secao.trim() || a.link_conteudo.join("").trim());
 }
 
-export type Aba = "pedido" | "alteracoes" | "conferencia" | "planilha" | "ia";
+export type Aba = "pedido" | "alteracoes" | "conferencia" | "planilha";
 
 /** Como uma alteração aparece na lista: um estado só, o mais urgente. */
 export type Situacao = "ok" | "aviso" | "erro" | "rascunho" | "trava";

@@ -1,4 +1,6 @@
 import ExcelJS from "exceljs";
+import { escreverBriefing } from "./resumo.js";
+import { caber, tamanhoDaImagem } from "./imagem.js";
 import {
   PRIMEIRA_LINHA_DADOS,
   ULTIMA_LINHA_DADOS,
@@ -113,11 +115,11 @@ export function primeiraLinhaLivre(ws: ExcelJS.Worksheet): number {
 // ------------------------------------------------------------------ escrita
 
 const ABA_PRINTS = "Prints";
-/** tamanho de cada print colado na aba Prints — igual ao que já era usado embutido na célula */
-const LARGURA_PRINT = 420;
-const ALTURA_PRINT = 210;
+/** caixa máxima de cada print na aba Prints: cabe nas linhas reservadas e mantém a proporção do print */
+export const LARGURA_PRINT = 420;
+export const ALTURA_PRINT = 220;
 /** linhas reservadas por print (rótulo + imagem + respiro), pra um nunca cobrir o de baixo */
-const PASSO_LINHAS_PRINT = 13;
+export const PASSO_LINHAS_PRINT = 13;
 
 /**
  * Por baixo de que linha a aba Prints está livre: olha tanto as imagens quanto
@@ -186,7 +188,7 @@ function escrever(
         const id = wb.addImage({ buffer: print.buffer as any, extension: print.extensao });
         wsPrints.addImage(id, {
           tl: { col: 0, row: linhaBloco + k * PASSO_LINHAS_PRINT } as any, // 0-based: uma linha abaixo do rótulo
-          ext: { width: LARGURA_PRINT, height: ALTURA_PRINT },
+          ext: caber(tamanhoDaImagem(print.buffer), LARGURA_PRINT, ALTURA_PRINT),
         });
       });
       proximaLinhaPrints = linhaBloco + printsDaAlteracao.length * PASSO_LINHAS_PRINT + 1;
@@ -200,7 +202,7 @@ function escrever(
         const id = wb.addImage({ buffer: print.buffer as any, extension: print.extensao });
         ws.addImage(id, {
           tl: { col: COLUNA_PRINT, row: linha - 1 } as any,
-          ext: { width: LARGURA_PRINT, height: ALTURA_PRINT },
+          ext: caber(tamanhoDaImagem(print.buffer), LARGURA_PRINT, ALTURA_PRINT),
         });
       });
     }
@@ -237,6 +239,12 @@ export async function gerarPlanilha({
   const wb = await abrir(templatePath);
   const ws = abaAlteracao(wb);
   escrever(wb, ws, briefing.alteracoes, PRIMEIRA_LINHA_DADOS, prints);
+  await escreverBriefing(wb, {
+    cliente: briefing.cliente,
+    urlBase: briefing.url_base,
+    novas: briefing.alteracoes.length,
+    jaExistiam: 0,
+  });
   return Buffer.from(await wb.xlsx.writeBuffer());
 }
 
@@ -287,6 +295,12 @@ export async function acrescentarAlteracoes({
   }
 
   escrever(wb, ws, briefing.alteracoes, primeiraLinha, prints);
+  await escreverBriefing(wb, {
+    cliente: briefing.cliente,
+    urlBase: briefing.url_base,
+    novas: briefing.alteracoes.length,
+    jaExistiam,
+  });
 
   return {
     arquivo: Buffer.from(await wb.xlsx.writeBuffer()),

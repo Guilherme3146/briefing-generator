@@ -1,7 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import AbaAlteracoes from "./AbaAlteracoes";
 import AbaConferencia from "./AbaConferencia";
-import AbaIA from "./AbaIA";
 import AbaPedido from "./AbaPedido";
 import AbaPlanilha from "./AbaPlanilha";
 import { useToast } from "./Toast";
@@ -19,9 +18,7 @@ import {
   type FonteAlteracao,
   type Importacao,
   type Inspecao,
-  type ModoIA,
   type OrigemPedido,
-  type ProvedorIA,
   type RespostaPerguntas,
   type RespostaRevisao,
   type RespostaSugestao,
@@ -30,10 +27,6 @@ import {
 } from "./types";
 
 const CHAVE = "briefing-rascunho-v1";
-// chave propria, FORA do rascunho: nao deve ser apagada por "Limpar", nem
-// viajar junto se o rascunho for exportado/importado por engano
-const CHAVE_IA = "briefing-ia-chave-v1";
-const PROVEDOR_IA = "briefing-ia-provedor-v1";
 
 const VAZIO: Briefing = { cliente: "", url_base: "", alteracoes: [novaAlteracao(1)] };
 
@@ -76,16 +69,8 @@ export default function App() {
   const [sugerindo, setSugerindo] = useState(false);
   const [erro, setErro] = useState<string | null>(null);
 
+  // a IA só existe quando o servidor tem a chave no .env (GEMINI_API_KEY / ANTHROPIC_API_KEY)
   const [iaAtiva, setIaAtiva] = useState(false);
-  const [iaModo, setIaModo] = useState<ModoIA>("desligada");
-  const [provedorPadrao, setProvedorPadrao] = useState<ProvedorIA>("gemini");
-  // a chave que o PROPRIO VISITANTE colou — so existe no navegador dele. So
-  // importa (e so e enviada) quando iaModo === "proprio"; nos outros modos o
-  // servidor ja resolve sozinho e esse campo fica sem uso.
-  const [iaChave, setIaChave] = useState(() => localStorage.getItem(CHAVE_IA) ?? "");
-  const [iaProvedorEscolhido, setIaProvedorEscolhido] = useState<ProvedorIA>(
-    () => (localStorage.getItem(PROVEDOR_IA) as ProvedorIA | null) ?? "gemini",
-  );
   const [ignorados, setIgnorados] = useState<string[]>([]);
   const [revertidas, setRevertidas] = useState<string[]>([]);
   const [uso, setUso] = useState<Uso | null>(null);
@@ -114,49 +99,11 @@ export default function App() {
       const r = await fetch("/api/health", { cache: "no-store" });
       const d = await r.json();
       setApiOnline(r.ok && d?.ok === true);
-      setIaAtiva(Boolean(d?.ia?.ativa));
-      setIaModo((d?.ia?.modo as ModoIA | undefined) ?? "desligada");
-      if (d?.ia?.provedorPadrao) {
-        setProvedorPadrao(d.ia.provedorPadrao as ProvedorIA);
-        // so adota a dica do servidor se o visitante nunca escolheu nada aqui
-        if (!localStorage.getItem(PROVEDOR_IA)) {
-          setIaProvedorEscolhido(d.ia.provedorPadrao as ProvedorIA);
-        }
-      }
+      setIaAtiva(Boolean(d?.ia?.ativa) && d?.ia?.modo === "servidor");
     } catch {
       setApiOnline(false);
     }
   }, []);
-
-  // persistidos a parte do rascunho — ver o comentario em CHAVE_IA
-  useEffect(() => {
-    try {
-      if (iaChave) localStorage.setItem(CHAVE_IA, iaChave);
-      else localStorage.removeItem(CHAVE_IA);
-    } catch {
-      /* quota cheia ou storage bloqueado: a chave so vive nesta sessao */
-    }
-  }, [iaChave]);
-  useEffect(() => {
-    try {
-      localStorage.setItem(PROVEDOR_IA, iaProvedorEscolhido);
-    } catch {
-      /* idem */
-    }
-  }, [iaProvedorEscolhido]);
-
-  /**
-   * Headers da chave do visitante — so vao quando o modo e "proprio". Nos
-   * outros modos o servidor resolve tudo sozinho e mandar isto seria ignorado
-   * (ver anthropic.ts: em modo "servidor" o header nunca e usado).
-   */
-  const headersIA = useCallback((): Record<string, string> => {
-    if (iaModo !== "proprio" || !iaChave.trim()) return {};
-    return { "X-IA-Chave": iaChave.trim(), "X-IA-Provedor": iaProvedorEscolhido };
-  }, [iaModo, iaChave, iaProvedorEscolhido]);
-
-  /** true quando um clique num botao de IA realmente dispara uma chamada. */
-  const iaPronta = iaModo === "servidor" || (iaModo === "proprio" && iaChave.trim().length > 0);
 
   useEffect(() => {
     void verificarApi();
@@ -498,10 +445,6 @@ export default function App() {
 
   async function sugerir() {
     if (!pedido.trim()) return;
-    if (!iaPronta) {
-      setErro("Cole sua chave de IA em Configurar IA antes de usar — fica só neste navegador.");
-      return;
-    }
     const preenchidas = briefing.alteracoes.filter(temConteudo).length;
     if (
       preenchidas > 0 &&
@@ -518,7 +461,7 @@ export default function App() {
     try {
       const r = await fetch("/api/sugerir", {
         method: "POST",
-        headers: { "Content-Type": "application/json", ...headersIA() },
+        headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ texto: pedido, origem, instrucao }),
       });
       const data = (await r.json()) as RespostaSugestao & { erro?: string };
@@ -556,10 +499,6 @@ export default function App() {
   }
 
   async function revisarIA() {
-    if (!iaPronta) {
-      setErro("Cole sua chave de IA em Configurar IA antes de usar — fica só neste navegador.");
-      return;
-    }
     const pendentes = briefing.alteracoes.filter(
       (a) => a.solicitacao.trim() && !cacheRevisao[hashRevisao(a)],
     );
@@ -573,7 +512,7 @@ export default function App() {
     try {
       const r = await fetch("/api/revisar-ia", {
         method: "POST",
-        headers: { "Content-Type": "application/json", ...headersIA() },
+        headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ briefing: { ...briefing, alteracoes: pendentes } }),
       });
       const data = (await r.json()) as RespostaRevisao & { erro?: string };
@@ -743,8 +682,7 @@ export default function App() {
   const semCapacidade = Boolean(inspecao && briefing.alteracoes.length > inspecao.capacidadeRestante);
   const bloqueado = erros.length > 0 || briefing.alteracoes.length === 0 || semCapacidade;
 
-  // a aba da IA só existe com a IA ligada; se ela sumir, não deixa a tela vazia
-  const abaAtiva: Aba = aba === "ia" && !iaAtiva ? "pedido" : aba;
+  const abaAtiva: Aba = aba;
 
   function abrirAlteracao(ordem: number) {
     setSelecionada(ordem);
@@ -851,17 +789,6 @@ export default function App() {
             )}
           </button>
         ))}
-        {iaAtiva && (
-          <button
-            role="tab"
-            aria-selected={abaAtiva === "ia"}
-            className={`aba ia ${abaAtiva === "ia" ? "ativa" : ""}`}
-            onClick={() => setAba("ia")}
-          >
-            IA
-            <span className="aba-tag">opcional</span>
-          </button>
-        )}
       </nav>
 
       {erro && (
@@ -878,11 +805,30 @@ export default function App() {
           <AbaPedido
             briefing={briefing}
             pedido={pedido}
-            iaAtiva={iaAtiva}
+            ia={
+              iaAtiva
+                ? {
+                    origem,
+                    instrucao,
+                    onInstrucao: setInstrucao,
+                    sugerindo,
+                    revisando,
+                    aRevisar,
+                    totalAlteracoes: briefing.alteracoes.filter(temConteudo).length,
+                    naoConfirmadas,
+                    ignorados,
+                    revertidas,
+                    uso,
+                    onOrigem: setOrigem,
+                    onSugerir: sugerir,
+                    onRevisar: revisarIA,
+                    onVerAlteracoes: () => abrirAlteracao(1),
+                  }
+                : null
+            }
             onBriefing={setBriefing}
             onPedido={setPedido}
             onComecar={() => setAba("alteracoes")}
-            onIrParaIA={() => setAba("ia")}
             onLimpar={limpar}
             conversa={{
               importacao,
@@ -969,34 +915,6 @@ export default function App() {
           />
         )}
 
-        {abaAtiva === "ia" && iaAtiva && (
-          <AbaIA
-            pedido={pedido}
-            origem={origem}
-            instrucao={instrucao}
-            onInstrucao={setInstrucao}
-            sugerindo={sugerindo}
-            revisando={revisando}
-            aRevisar={aRevisar}
-            totalAlteracoes={briefing.alteracoes.length}
-            naoConfirmadas={naoConfirmadas}
-            ignorados={ignorados}
-            revertidas={revertidas}
-            uso={uso}
-            onOrigem={setOrigem}
-            onSugerir={sugerir}
-            onRevisar={revisarIA}
-            onVerAlteracoes={() => abrirAlteracao(1)}
-            onIrParaPedido={() => setAba("pedido")}
-            modo={iaModo}
-            pronta={iaPronta}
-            chave={iaChave}
-            onChave={setIaChave}
-            provedor={iaProvedorEscolhido}
-            provedorSugerido={provedorPadrao}
-            onProvedor={setIaProvedorEscolhido}
-          />
-        )}
       </main>
 
       <footer className="rodape">

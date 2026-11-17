@@ -503,3 +503,5 @@ textarea.grande { min-height: 260px; }
 .toast-confirmar:hover { opacity: .9; }
 .rodape-creditos { margin-top: 6px; color: #8fa0c2; font-size: .78rem; font-weight: 600; }
 .erro-importacao span { white-space: pre-line; }
+.outras-saidas { margin: 10px 0 0; } .outras-saidas > summary { cursor: pointer; font-weight: 700; color: #5b6b8c; padding: 10px 4px; }
+.modos input[type=radio] { margin-right: 8px; }
