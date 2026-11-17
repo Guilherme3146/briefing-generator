@@ -1,5 +1,5 @@
 import ExcelJS from "exceljs";
-import { escreverBriefing } from "./resumo.js";
+import { garantirCaixasDeMarcacao } from "./caixas.js";
 import { caber, tamanhoDaImagem } from "./imagem.js";
 import {
   PRIMEIRA_LINHA_DADOS,
@@ -239,13 +239,7 @@ export async function gerarPlanilha({
   const wb = await abrir(templatePath);
   const ws = abaAlteracao(wb);
   escrever(wb, ws, briefing.alteracoes, PRIMEIRA_LINHA_DADOS, prints);
-  await escreverBriefing(wb, {
-    cliente: briefing.cliente,
-    urlBase: briefing.url_base,
-    novas: briefing.alteracoes.length,
-    jaExistiam: 0,
-  });
-  return Buffer.from(await wb.xlsx.writeBuffer());
+  return garantirCaixasDeMarcacao(Buffer.from(await wb.xlsx.writeBuffer()));
 }
 
 export type OpcoesAcrescimo = {
@@ -295,15 +289,9 @@ export async function acrescentarAlteracoes({
   }
 
   escrever(wb, ws, briefing.alteracoes, primeiraLinha, prints);
-  await escreverBriefing(wb, {
-    cliente: briefing.cliente,
-    urlBase: briefing.url_base,
-    novas: briefing.alteracoes.length,
-    jaExistiam,
-  });
 
   return {
-    arquivo: Buffer.from(await wb.xlsx.writeBuffer()),
+    arquivo: await garantirCaixasDeMarcacao(Buffer.from(await wb.xlsx.writeBuffer())),
     primeiraLinha,
     ultimaLinha,
     jaExistiam,

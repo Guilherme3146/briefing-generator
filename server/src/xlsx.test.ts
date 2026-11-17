@@ -44,7 +44,7 @@ async function gerarEAbrir() {
   return wb;
 }
 
-test("preserva as 5 abas do template e acrescenta as abas Briefing e Planner no fim", async () => {
+test("preserva as 5 abas do template, sem acrescentar nenhuma", async () => {
   const wb = await gerarEAbrir();
   assert.deepEqual(wb.worksheets.map((w) => w.name), [
     "Site",
@@ -52,8 +52,6 @@ test("preserva as 5 abas do template e acrescenta as abas Briefing e Planner no 
     "Complemento de Mockup",
     "Prints",
     "FAQ",
-    "Briefing",
-    "Planner",
   ]);
 });
 
